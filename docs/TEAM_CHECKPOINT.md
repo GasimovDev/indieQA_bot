@@ -159,7 +159,10 @@ Opens http://localhost:8501.
 python main.py --headless --seed 7 --out data/logs/a.csv
 python main.py --headless --seed 7 --out data/logs/b.csv
 ```
-- [ ] `fc.exe data\logs\a.csv data\logs\b.csv` differs **only** in the `timestamp` column (it uses the real start time) — positions and inputs are identical
+```powershell
+python -c "import pandas as pd; a, b = (pd.read_csv(f'data/logs/{n}.csv').drop(columns='timestamp') for n in 'ab'); print('identical:', a.equals(b))"
+```
+- [ ] Prints `identical: True` (verified: 7,200 / 7,200 rows). Only `timestamp` differs, because it starts from each run's real clock time.
 
 ### T7 — Demo dry run (before 20:00)
 - [ ] Fresh `git pull`, run T3 + T4 + T5 in the order you'll present
