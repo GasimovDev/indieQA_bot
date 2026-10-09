@@ -8,7 +8,7 @@ Usage:
     python main.py                      # rendered at 60 FPS (close window / Esc to stop)
     python main.py --headless           # as fast as possible, no window
     python main.py --headless --frames 36000 --seed 7
-    python main.py --headless --analyze # also run Person 2's bug detector on the CSV
+    python main.py --headless --analyze # then detect bugs + write reports for the dashboard
 
 Episode policy (the engine itself never resets the player):
     * no collision for > 300 consecutive frames (Infinite_Fall / Wall_Clip aftermath) -> respawn
@@ -21,6 +21,7 @@ glitch is fully recorded before the respawn. Spawn points rotate in a seeded ord
 from __future__ import annotations
 
 import argparse
+import glob
 import os
 import random
 import sys
@@ -32,6 +33,7 @@ from core.agent import QAAgent
 from core.engine import FPS, NO_INPUT, WORLD_HEIGHT, WORLD_WIDTH, FrameState, GameEngine, Zone
 from core.telemetry import DEFAULT_LOG_PATH, TelemetryRecorder
 
+DEFAULT_REPORT_DIR: str = os.path.join("data", "reports")
 FALL_RESET_FRAMES: int = 300
 SOFTLOCK_RESET_FRAMES: int = 600
 
@@ -67,7 +69,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42, help="seed for the agent and spawn rotation (default 42)")
     parser.add_argument("--out", default=DEFAULT_LOG_PATH, help=f"telemetry CSV path (default {DEFAULT_LOG_PATH})")
     parser.add_argument("--episode-max", type=int, default=3600, help="max frames per episode (default 3600)")
-    parser.add_argument("--analyze", action="store_true", help="run analysis.bug_detector on the CSV afterwards")
+    parser.add_argument(
+        "--analyze",
+        action="store_true",
+        help="afterwards run analysis.bug_detector on the CSV and write reports with analysis.reporter",
+    )
+    parser.add_argument(
+        "--reports-dir",
+        default=DEFAULT_REPORT_DIR,
+        help=f"where --analyze writes bug reports (default {DEFAULT_REPORT_DIR}); old bug_* reports there are replaced",
+    )
     args = parser.parse_args(argv)
     if args.frames <= 0 or args.episode_max <= 0:
         parser.error("--frames and --episode-max must be positive")
@@ -137,18 +148,34 @@ def run(args: argparse.Namespace) -> RunSummary:
     return summary
 
 
-def analyze(csv_path: str) -> None:
-    """Hand the CSV to Person 2's detector (read-only use of analysis/)."""
+def analyze(csv_path: str, report_dir: str) -> None:
+    """Hand the CSV to Person 2's detector and reporter (their APIs are used as-is, read-only).
+
+    Reports from earlier runs (bug_*.json / bug_*.md) are removed first so the
+    dashboard always shows exactly the bugs of the latest run.
+    """
     try:
         import pandas as pd
 
         from analysis.bug_detector import BugDetector
+        from analysis.reporter import BugReporter
     except ImportError as exc:
         print(f"[analyze] skipped: {exc}")
         return
     bugs = BugDetector(WORLD_WIDTH, WORLD_HEIGHT).process_telemetry(pd.read_csv(csv_path))
     counts = Counter(str(b.get("type")) for b in bugs)
     print(f"[analyze] bug_detector reported {len(bugs)} bug(s): {dict(counts) or '-'}")
+
+    stale: list[str] = [
+        path
+        for pattern in ("bug_*.json", "bug_*.md")
+        for path in glob.glob(os.path.join(report_dir, pattern))
+    ]
+    for path in stale:
+        os.remove(path)
+    BugReporter(report_dir).generate_all_reports(bugs)
+    print(f"[analyze] reports         : {len(bugs)} written to {os.path.abspath(report_dir)} ({len(stale)} old files replaced)")
+    print("[analyze] dashboard       : streamlit run dashboard/app.py")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -163,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"glitch events    : {dict(summary.glitch_events) or '-'} (engine ground truth: Wall_Clip frames)")
     print(f"telemetry        : {os.path.abspath(args.out)}")
     if args.analyze:
-        analyze(args.out)
+        analyze(args.out, args.reports_dir)
     return 0
 
 

@@ -65,7 +65,7 @@ Why no ML is a **strength** (Feasibility slide): **zero training data**, runs fu
 
 - While `main.py` runs, telemetry is written to the CSV continuously (in small batches).
 - The dashboard re-reads the CSV at most every 5 s **when the page reruns** (reload / interact). So reloading during a run shows growing frame counts and heatmap, but there's **no automatic live refresh**.
-- **Bugs only appear after detection + reporting have run** — and today **nothing triggers that** (see §6, blocker B1).
+- **Bugs appear after** `python main.py --headless --analyze` (detection + reports), then reload the dashboard.
 
 What the demo can show today: (1) `python main.py` — watch the bot play in the game window, glitch counter in the HUD; (2) the dashboard with the resulting data (once B1 is solved).
 Optional upgrade (post-blockers): run the detector incrementally from `main.py` and have the dashboard auto-refresh every few seconds → a real "live" view.
@@ -93,7 +93,7 @@ Optional upgrade (post-blockers): run the detector incrementally from `main.py` 
 
 | # | Issue | Owner | Action |
 |---|---|---|---|
-| **B1** | **Nobody calls `BugReporter`** → `data/reports/` stays empty → dashboard always shows 0 bugs | Team decision | Proposal: `main.py --analyze` runs detector **and** reporter after the run (Person 1, uses Person 2's API read-only). Needs B2 first, otherwise 1 report per OOB frame (3,318 files from a 2-min run). |
+| ~~B1~~ | ✅ **Fixed (Person 1):** `main.py --analyze` now runs `BugDetector(800, 600)` **and** `BugReporter` → `data/reports/bug_*.json/.md`; old `bug_*` reports are replaced each run so the dashboard shows the latest run only. `--reports-dir` to change the folder. Until B2 lands, the old detector still produces ~1 report per out-of-bounds frame (3,318 files for a 2-min run). | Person 1 | Done |
 | **B2** | Person 2's detector fix (all checks every frame + debounce) **is not pushed** — GitHub still has the 12:32 version | Person 2 | `git pull origin main`, then commit & push `analysis/` |
 | **B3** | Softlock never fires: start position anchored at first input; our agent always presses something | Person 2 | Compare against position **300 frames ago** (sliding window) |
 | B4 | Dashboard "Export Markdown" crashes: `tabulate` not installed | Person 2 (+ shared `requirements.txt`) | add `tabulate>=0.9` to requirements |
@@ -151,7 +151,7 @@ streamlit run dashboard/app.py
 Opens http://localhost:8501.
 - [ ] "Total Frames Analyzed" = frames of your last run
 - [ ] Heatmap shows where the bot walked (floor line, pit, right wall)
-- [ ] Bug count / table / red ✖ — **only after B1 + B2** (today: "No bugs detected yet")
+- [ ] Bug count / table / red ✖ — after T4 with `--analyze` (clean results only after B2)
 - [ ] Severity filter, Export Markdown (after B4)
 
 ### T6 — Reproducibility (good pitch point)
@@ -174,7 +174,7 @@ python -c "import pandas as pd; a, b = (pd.read_csv(f'data/logs/{n}.csv').drop(c
 ## 8. Next steps (in order)
 
 1. **Person 2:** pull, push the detector fix (B2), sliding-window softlock (B3), `BugDetector(800, 600)` (B6), `tabulate` (B4).
-2. **Team decision on B1** → then Person 1 wires `--analyze` to also write reports.
+2. ~~B1~~ done: `--analyze` writes reports.
 3. **Everyone:** re-run T4 + T5 → all 3 bug types visible on the dashboard.
 4. **Person 3:** screenshots + numbers from §5 and §1 into the deck; slides "3 Failure Modes" and "Feasibility" (zero training data, $0.04/h, deterministic).
 5. Demo dry run (T7).
