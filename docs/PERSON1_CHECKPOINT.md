@@ -3,8 +3,8 @@
 > **Project:** IndieQA — Autonomous QA Bug & Collision Hunter
 > **Event:** Neurobridge Game Summit 2026 Hackathon, Baku
 > **Repo:** https://github.com/GasimovDev/indieQA_bot
-> **Last updated:** 2026-10-09 — end of **Phase 1**
-> **Status:** ✅ Phase 1 complete (local commit; push pending repo access for `Qaqu2`) · ⏭️ Phase 2 (`core/engine.py`) — level layout proposed, awaiting approval
+> **Last updated:** 2026-10-09 — end of **Phase 2**
+> **Status:** ✅ Phase 1 · ✅ Phase 2 (`core/engine.py`, all self-tests pass) · ⏭️ Phase 3 (`core/telemetry.py`) — commits are local on `person1/core`; push pending repo access for `Qaqu2`
 
 ---
 
@@ -13,8 +13,8 @@
 | Phase | Deliverable | Status |
 |---|---|---|
 | 1 | Environment scaffolding (`requirements.txt`, `core/__init__.py`, `data/logs/`) | ✅ Done |
-| 2 | Physics engine + 3 intentional glitches (`core/engine.py`) | ⏭️ Next |
-| 3 | Telemetry recorder (`core/telemetry.py`) | ⏳ Pending |
+| 2 | Physics engine + 3 intentional glitches (`core/engine.py`) | ✅ Done (§5.0) |
+| 3 | Telemetry recorder (`core/telemetry.py`) | ⏭️ Next |
 | 4 | Autonomous agent (`core/agent.py`) | ⏳ Pending |
 | 5 | CLI test runner (`main.py`) | ⏳ Pending |
 
@@ -136,7 +136,7 @@ All units are **pixels** and **pixels/frame**. Fixed timestep **dt = 1/60 s** (6
 
 | Glitch | Mechanism | What Person 2's detector sees |
 |---|---|---|
-| **Wall_Clip** | A corner is built from two collider segments with a **2 px seam**. Planted resolver bug: when the hitbox overlaps the seam with a high-speed diagonal velocity, the engine applies minimum-translation (shortest-exit) push-out — and inside the seam the shortest exit is the **far side** of the wall. | One-frame jump Δp ≥ wall thickness + player width (> 25 px) crossing a solid surface; player ends **outside** the arena (also OOB). |
+| **Wall_Clip** | A corner is built from two collider segments with a **2 px seam**. Planted resolver bug: when the hitbox straddles the seam (overlaps both segments) during a high-speed diagonal move, the engine's "unstuck" routine ejects the player along its velocity to the first free space — the **far side** of the wall. *(Refined in Phase 2 from the original shortest-exit idea; see §5.0.)* | One-frame jump Δp ≥ wall thickness + player width (> 25 px) crossing a solid surface; player ends **outside** the arena (also OOB). |
 | **Infinite_Fall** | One floor segment has **no collider and no kill-plane**; terminal velocity is disabled there. | `collision_state = False` for > 120 consecutive frames, `vel_y` monotonically increasing, `pos_y → +∞` (y-down coordinates, i.e. `y > H` OOB). |
 | **Softlock_Pit** | Enclosed U-pit, wall height **h = 150 px** vs jump **j_max = 100 px** → 50 px unclimbable margin. No ledges, no wall-jump. Interior ≈ player width + small margin. | Continuous input > 300 frames, displacement (window start → current frame) < 5 px whenever the agent is back on the pit floor. |
 
@@ -167,24 +167,72 @@ Confirmed by Person 2:
 
 ---
 
+## 5.0 Phase 2 — What We Did (`core/engine.py`) ✅
+
+### Approved level layout (800 × 600, floor surface y = 440)
+```
+y=0   ┌──────────────────────── ceiling (16px) ───────────────────────────┐
+      │L                                                               R  │
+      │W                                    ┌─platform─┐               u  │
+y=360 │                                     │560..680  │               p  │
+      │    S1                S2             └──────────┘     S3        p  │
+y=406 │                                                         2px seam ═│ ← WALL_CLIP
+y=440 ├─────── floor A ─────┐     ┌─ floor B ─┐  ┌──── floor C ──────────┤
+      │      16..240        │ GAP │  300..440 │PIT│      480..800         │
+y=590 │                     │60px │           │40w│                      │
+y=600 └─────────────────────┘  ↓  └───────────┴───┴──────────────────────┘
+                          INFINITE_FALL     SOFTLOCK (150 deep)
+```
+
+| Collider | Rect (x, y, w, h) | Kind |
+|---|---|---|
+| ceiling | (0, 0, 800, 16) | solid |
+| left_wall | (0, 0, 16, 600) | solid |
+| floor_a | (16, 440, 224, 160) | solid |
+| *(gap x 240–300)* | — no collider — | **Infinite_Fall** |
+| floor_b | (300, 440, 140, 160) | solid |
+| pit_floor | (440, 590, 40, 10) | solid (**Softlock_Pit** bottom) |
+| floor_c | (480, 440, 320, 160) | solid |
+| platform | (560, 360, 120, 16) | solid (80 px above floor → reachable) |
+| right_wall_upper | (784, 0, 16, 406) | **seam** |
+| right_wall_lower | (784, 408, 16, 32) | **seam** (2 px gap at y 406–408) |
+
+Spawn points (4 px above the floor, so the respawn frame has `collision_state = False`): **S1 (40, 404)**, **S2 (340, 404)**, **S3 (640, 404)**.
+
+### Glitch mechanics as implemented
+- **Wall_Clip:** in the X-resolution pass, if the player box overlaps **both** seam segments at once (only possible while airborne with `376 < pos_y < 406`, i.e. rising/falling at ~9–10 px/frame → genuinely diagonal, high-velocity) the engine's buggy "unstuck" routine pushes the player along `sign(vel_x)` to the first free space → outside the arena. The frame is tagged `glitch_event = Wall_Clip`, `collision_state = True`.
+- **Infinite_Fall:** no collider in the gap; terminal velocity (15) is enforced only while the player centre is inside the world rectangle → uncapped below y = 600. Engine never teleports/resets.
+- **Softlock_Pit:** 150 px deep, 40 px wide (8 px drop-in window ≥ 6 px/frame max step → the agent can't skate over it). Discrete apex is exactly 100 px → 50 px unclimbable.
+
+### Public API (what Phases 3–5 build on)
+| Symbol | Purpose |
+|---|---|
+| `GameEngine(headless=True, level=None, spawn_index=0)` | Create the simulation; rendered mode opens an 800×600 window |
+| `engine.step(inputs: InputState) -> FrameState` | Advance exactly one frame (deterministic) |
+| `engine.reset(spawn_index)` | New episode at S1/S2/S3 (wraps); `frame_id` keeps counting |
+| `engine.render(state, hud_lines=()) -> bool` | Draw + hold 60 FPS; `False` when window closed; no-op headless |
+| `engine.level` | `Level` (colliders, spawn points, `fall_gap`, `pit`, `seam` rects) — for the agent's probes |
+| `InputState(left, right, jump)` | `.label` → `"right+jump"` / `"none"`; `InputState.from_label()` for replays |
+| `FrameState` | `frame_id, pos_x, pos_y, vel_x, vel_y, is_grounded, active_input, collision_state` (CSV) + `zone, glitch_event, episode` (runner/agent only) |
+| `Zone` | `arena`, `fall_shaft`, `softlock_pit`, `out_of_world` — used by `main.py` for episode resets |
+
+The engine no longer owns the agent or the telemetry logger (unlike the uploaded version): `main.py` wires `agent → engine → telemetry`.
+
+### Self-test result — `python -m core.engine`
+```
+[PASS] jump apex            = 100.0000px (j_max 100px)
+[PASS] Softlock_Pit         : trapped 600 frames of jump spam, max rise 100.00px < wall 150px
+[PASS] Infinite_Fall        : 281 frames without collision, vel_y 154.0px/f (uncapped), pos_y 24201
+[PASS] Wall_Clip            : frame 56 jumped 48.79px to (800.0, 389.0), collision=True
+[PASS] no false >25px moves : 20000 random frames
+```
+Rendered mode verified off-screen (window drawing, HUD, zone labels, 60 FPS clock).
+
+> ⚠️ Until Phase 5, the uploaded `main.py` / `core/agent.py` / `core/telemetry.py` still exist on this branch and `python main.py` is expected to fail (it imports the old `Engine`). They are replaced in Phases 3–5; `main` is untouched until then.
+
 ## 5. Remaining Phases — Plan
 
-### Phase 2 — `core/engine.py` (NEXT)
-**Deliverables**
-- `GameEngine` class with explicit type hints; works in **headless** (`SDL_VIDEODRIVER=dummy`, no clock throttle) and **rendered** (window, `clock.tick(60)`) modes.
-- Physics step `step(inputs: InputState) -> FrameState` — deterministic, fixed dt.
-- Kinematic player controller: run accel / friction / max speed, jump only when grounded, gravity, terminal velocity (disabled in the Infinite_Fall zone).
-- Level geometry as a list of named `pygame.Rect` colliders: outer boundary walls, floor, platforms, plus the 3 glitch structures.
-- Axis-separated AABB collision resolution (X then Y) for normal geometry; the deliberately flawed shortest-exit resolver only for the Wall_Clip seam colliders.
-- `FrameState` dataclass exposing exactly what telemetry needs: `frame_id, pos_x, pos_y, vel_x, vel_y, is_grounded, collision_state, active_input`.
-- Simple rendering (colored rects; glitch zones optionally highlighted for the demo/pitch).
-- Self-test (`python -m core.engine`) that scripts inputs to prove: (a) jump apex ≤ 100 px, (b) each of the 3 glitches is reproducible.
-
-**Design points to settle during Phase 2 (will be raised before coding)**
-1. **Level layout on 800 × 600.** The Softlock pit must be 150 px deep *without* its floor leaving the world (else it reads as OOB). Plan: main floor surface raised (≈ y 420) so the pit (≈ 420 → 570) fits inside `H = 600`.
-2. **Pit entrance width vs. agent speed.** A pit only 4 px wider than the player is a 4 px "drop-in window", but the agent moves up to 6 px/frame and could skip over it. Options: (a) ~40 px interior (8 px window ≥ max speed), (b) a narrow drop-in chute from a platform above. Must keep horizontal wiggle < 5 px for the detector.
-3. **Infinite_Fall gap width** — must be > 32 px so the player actually falls through.
-4. **Wall_Clip corner location** — which corner, wall thickness (sets the Δp jump size), and the velocity condition that arms the bug.
+### Phase 2 — `core/engine.py` ✅ (see §5.0)
 
 ### Phase 3 — `core/telemetry.py`
 - `TelemetryRecorder` with `record(state: FrameState) -> None`, `start()`, `close()`.
@@ -209,8 +257,8 @@ Confirmed by Person 2:
 
 ## 6. Technical Notes
 
-### 6.1 Integration order (planned)
-Semi-implicit Euler per frame: `vel += accel`, then `pos += vel`, then resolve collisions.
+### 6.1 Integration order (implemented)
+Per frame: horizontal accel/friction → jump impulse (if grounded) → `vel_y += g` (+ cap inside world) → `pos_x += vel_x`, resolve X (seam bug lives here) → `pos_y += vel_y`, resolve Y → contact test (1 px tolerance counts as touching).
 
 ### 6.2 Jump impulse derivation (discrete, not continuous)
 With semi-implicit Euler and jump set as `vel_y = -v0`, the rise over frames `k = 1..n` is
@@ -218,7 +266,7 @@ With semi-implicit Euler and jump set as `vel_y = -v0`, the rise over frames `k 
 - `v0 = 10.0`, `g = 0.5` → apex **95 px** (continuous formula `v0²/2g` would wrongly predict 100).
 - `v0 = 10.25`, `g = 0.5` → 20 rising frames, apex `20·10.25 − 0.5·(20·21/2) =` **100.0 px exactly**.
 
-→ Planned `v0 = 10.25 px/frame`, to be verified by the Phase 2 self-test. Pit wall 150 px ⇒ 50 px unclimbable margin.
+→ `v0 = 10.25 px/frame` — **verified** by the Phase 2 self-test (apex 100.0000 px). Pit wall 150 px ⇒ 50 px unclimbable margin.
 
 ### 6.3 Coding standards (from spec)
 - Python 3.11+, explicit type hints on all interfaces, **no `# TODO`/draft code**, fully local (no API keys).
@@ -227,7 +275,7 @@ With semi-implicit Euler and jump set as `vel_y = -v0`, the rise over frames `k 
 
 ## 7. Git Workflow
 
-- **Branch:** working on `main` (small team, strictly disjoint file ownership → near-zero conflict risk; avoids PR overhead under hackathon time pressure).
+- **Branch (approved 2026-10-09):** Phases 2–4 live on **`person1/core`**; merged into `main` at Phase 5 once `python main.py --headless` works end-to-end, so `main` never has a half-replaced `core/`. Day-to-day the team still works on `main` with disjoint file ownership.
 - **Before every push:** `git pull --rebase origin main`.
 - **Shared files** (`requirements.txt`, `.gitignore`, `README.md`): coordinate in chat before editing.
 - **Suggested `.gitignore` addition** (for whoever owns it): `data/logs/*.csv` — telemetry is regenerated every run and can get large.
@@ -239,12 +287,12 @@ With semi-implicit Euler and jump set as `vel_y = -v0`, the rise over frames `k 
 | # | Item | Owner | Status |
 |---|---|---|---|
 | 1 | `pos_x/pos_y` = hitbox top-left or center? | Person 2 | Open |
-| 2 | Pit entrance width vs. 6 px/frame agent speed (§5 Phase 2 point 2) | Person 1 | To decide in Phase 2 |
-| 3 | Level layout coordinates (floor height, platforms, glitch locations) | Person 1 | To propose in Phase 2 |
+| 2 | Pit entrance width vs. 6 px/frame agent speed | Person 1 | ✅ Resolved: 40 px pit (8 px window) |
+| 3 | Level layout coordinates | Person 1 | ✅ Approved & implemented (§5.0) |
 | 4 | Person 2's local `requirements.txt` not yet pushed — identical content, should merge cleanly | Person 2 | Info |
 | 5 | Add `data/logs/*.csv` to `.gitignore` | Team | Suggested |
 | 6 | Who owns `core/`? `LRigloo` (= Person 2) uploaded `core/*.py` + `main.py` (§2.3.1) | Team | ✅ **Decided 2026-10-09: REPLACE** — Person 1 rebuilds `core/` + `main.py` to the approved spec, keeping the entry points (`python main.py [--headless]`, same CSV path/columns) |
 | 10 | `Qaqu2` has no push access to `GasimovDev/indieQA_bot` (HTTP 403) | GasimovDev | Open — add as collaborator |
 | 7 | `BugDetector` world size 1920×1080 vs engine 800×600 | Person 2 | Open |
-| 8 | OOB check short-circuits Infinite Fall detection + per-frame OOB spam | Person 2 | Open |
+| 8 | OOB check short-circuits Infinite Fall detection + per-frame OOB spam | Person 2 | Fixed locally by Person 2 (debounce + all checks every frame) — **not yet pushed** |
 | 9 | Softlock false positives from always-on agent input | Person 2 | Open |
