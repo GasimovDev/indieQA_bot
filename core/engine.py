@@ -552,6 +552,37 @@ def _self_test() -> None:
     print(f"[PASS] no false >25px moves : {n} random frames")
 
 
+def _play() -> None:
+    """Manual play: arrows / A-D move, Space / W / Up jump, 1-3 respawn at S1-S3, Esc quits."""
+    engine = GameEngine(headless=False)
+    last_glitch: str = "-"
+    running: bool = True
+    while running:
+        keys = pygame.key.get_pressed()
+        inputs = InputState(
+            left=bool(keys[pygame.K_LEFT] or keys[pygame.K_a]),
+            right=bool(keys[pygame.K_RIGHT] or keys[pygame.K_d]),
+            jump=bool(keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]),
+        )
+        for i, key in enumerate((pygame.K_1, pygame.K_2, pygame.K_3)):
+            if keys[key]:
+                engine.reset(i)
+        if keys[pygame.K_ESCAPE]:
+            break
+        state = engine.step(inputs)
+        if state.glitch_event is not None:
+            last_glitch = f"{state.glitch_event.value} @ frame {state.frame_id}"
+        running = engine.render(
+            state, (f"last glitch: {last_glitch}", "arrows/WASD move, SPACE jump, 1/2/3 respawn, ESC quit")
+        )
+    engine.close()
+
+
 if __name__ == "__main__":
-    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-    _self_test()
+    import sys
+
+    if "--play" in sys.argv:
+        _play()
+    else:
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        _self_test()
