@@ -4,7 +4,7 @@
 > **Event:** Neurobridge Game Summit 2026 Hackathon, Baku
 > **Repo:** https://github.com/GasimovDev/indieQA_bot
 > **Last updated:** 2026-10-09 — end of **Phase 2**
-> **Status:** ✅ Phase 1 · ✅ Phase 2 (`core/engine.py`, all self-tests pass) · ✅ Phase 3 (`core/telemetry.py`) · ✅ Phase 4 (`core/agent.py`) · ⏭️ Phase 5 (`main.py`) — pushed to branch `person1/core`
+> **Status:** ✅ Phase 1 · ✅ Phase 2 (`core/engine.py`, all self-tests pass) · ✅ Phase 3 (`core/telemetry.py`) · ✅ Phase 4 (`core/agent.py`) · ✅ Phase 5 (`main.py`) — on branch `person1/core`, merge into `main` pending approval
 
 ---
 
@@ -16,7 +16,7 @@
 | 2 | Physics engine + 3 intentional glitches (`core/engine.py`) | ✅ Done (§5.0) |
 | 3 | Telemetry recorder (`core/telemetry.py`) | ✅ Done (§5.1) |
 | 4 | Autonomous agent (`core/agent.py`) | ✅ Done (§5.2) |
-| 5 | CLI test runner (`main.py`) | ⏭️ Next |
+| 5 | CLI test runner (`main.py`) | ✅ Done (§5.3) — awaiting merge into `main` |
 
 Each phase is only started after the previous one is confirmed functional by Person 1.
 
@@ -301,6 +301,38 @@ Seeded `random.Random` → same seed ⇒ identical input sequence (reproducible 
 ```
 Trapped-in-pit check (seed 7): 1,962 pit frames, **0 × `none`**, x confined to 440–448 px.
 
+## 5.3 Phase 5 — What We Did (`main.py`) ✅
+
+```powershell
+.\venv\Scripts\python.exe main.py                       # watch the agent play at 60 FPS (Esc / close window to stop)
+.\venv\Scripts\python.exe main.py --headless            # fast run, 7200 frames (2 min game time)
+.\venv\Scripts\python.exe main.py --headless --frames 36000 --seed 7 --analyze
+```
+| Flag | Default | Meaning |
+|---|---|---|
+| `--headless` | off | no window, max speed |
+| `--frames` | 7200 | frames to simulate (60 per game second) |
+| `--seed` | 42 | agent + spawn rotation seed (same seed ⇒ same run) |
+| `--out` | `data/logs/telemetry.csv` | CSV path |
+| `--episode-max` | 3600 | max frames per episode |
+| `--analyze` | off | afterwards, feed the CSV to Person 2's `analysis.bug_detector` (read-only use) |
+
+Loop: `agent.decide → engine.step → telemetry.record → engine.render` (render is a no-op headless).
+**Episode policy (runner, not engine):** respawn after > 300 frames without collision (fell / clipped out), > 600 frames in the pit, or `--episode-max`. Spawn S1/S2/S3 in a seeded shuffled rotation. Ctrl+C flushes telemetry safely.
+
+**End-to-end result** — `main.py --headless --frames 36000 --analyze` (seed 42):
+```
+frames simulated : 36000 (600.0 s game time in 2.1 s)
+episodes         : 65  resets: {'fell (no collision > 300 frames)': 48, 'trapped in pit > 600 frames': 16}
+glitch events    : {'Wall_Clip': 22}
+[analyze] bug_detector reported 14446 bug(s): {'Out of Bounds': 14424, 'Wall Clip': 22}
+```
+- Person 2's detector (GitHub version `c349a0a`) finds **22 / 22 Wall Clips** (exact match with engine ground truth).
+- Same CSV checked against the **spec rules** directly: **48 Infinite Fall** events (> 120 frames falling without collision) and **13 Softlock** events (sliding 300-frame window, < 5 px). → The telemetry contains all 3 glitches; the remaining gaps are the known detector issues (§8 items 8, 9, 12).
+- Rendered mode: 300 frames in 5.0 s → real-time 60 FPS confirmed.
+
+All four uploaded Person-2 versions of Person 1 files (`core/engine.py`, `core/agent.py`, `core/telemetry.py`, `main.py`) are now replaced on this branch. Entry points kept: `python main.py`, `python main.py --headless`, output `data/logs/telemetry.csv`.
+
 ## 5. Remaining Phases — Plan
 
 ### Phase 2 — `core/engine.py` ✅ (see §5.0)
@@ -318,7 +350,7 @@ Trapped-in-pit check (seed 7): 1,962 pit frames, **0 × `none`**, x confined to 
 - Seeded RNG → fully reproducible runs (helps Person 2's `reproduction_sequence`).
 - Must keep spamming while trapped (so the Softlock detector fires).
 
-### Phase 5 — `main.py`
+### Phase 5 — `main.py` ✅ (see §5.3)
 - CLI flags (planned): `--headless`, `--frames N`, `--seed S`, `--fps 60`, `--out data/logs/telemetry.csv`.
 - Loop: `agent.decide → engine.step → telemetry.record → (render)`.
 - End-of-run summary printed to console (frames, time simulated, CSV path).
