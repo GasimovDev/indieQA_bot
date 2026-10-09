@@ -331,7 +331,7 @@ def body() -> None:
     left, right = st.columns([3, 2], gap="medium")
     with left:
         st.markdown(
-            '<div class="iq-h">Where the bugs are</div><div class="iq-hsub">Green = where the bot explored · '
+            '<div class="iq-h">Where the bugs are</div><div class="iq-hsub">Green lines = every path the bot took (stronger = more often) · '
             "markers = where each problem starts, coloured by priority</div>",
             unsafe_allow_html=True,
         )

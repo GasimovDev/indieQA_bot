@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pygame
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.collections import LineCollection
 from matplotlib.patches import Rectangle
 
 from analysis.bug_detector import BugDetector
@@ -305,17 +305,23 @@ def _surface_coverage(df: pd.DataFrame, level: Level) -> tuple[int, int]:
 
 
 # ------------------------------------------------------------------ map
-def _blur(a: np.ndarray, passes: int = 2) -> np.ndarray:
-    kernel = np.array([1.0, 4.0, 6.0, 4.0, 1.0]) / 16.0
-    for _ in range(passes):
-        a = np.apply_along_axis(lambda r: np.convolve(r, kernel, mode="same"), 0, a)
-        a = np.apply_along_axis(lambda r: np.convolve(r, kernel, mode="same"), 1, a)
-    return a
+def _path_segments(df: pd.DataFrame) -> np.ndarray:
+    """Line segments of the bot's movement inside the map (respawn teleports and clips are skipped)."""
+    cx = (df["pos_x"] + PLAYER_WIDTH / 2).to_numpy()
+    cy = (df["pos_y"] + PLAYER_HEIGHT / 2).to_numpy()
+    vx = df["vel_x"].to_numpy()
+    vy = df["vel_y"].to_numpy()
+    inside = (cx >= 0) & (cx <= WORLD_WIDTH) & (cy >= 0) & (cy <= WORLD_HEIGHT)
+    moved = np.hypot(np.diff(cx) - vx[1:], np.diff(cy) - vy[1:]) <= 25.0
+    ok = moved & inside[1:] & inside[:-1]
+    starts = np.column_stack([cx[:-1], cy[:-1]])
+    ends = np.column_stack([cx[1:], cy[1:]])
+    return np.stack([starts, ends], axis=1)[ok]
 
 
 def render_map(df: pd.DataFrame, issues: Sequence[Issue], level: Level, theme: str = "light") -> bytes:
     pal = palette(theme)
-    fig, ax = plt.subplots(figsize=(8.0, 6.2), dpi=170)
+    fig, ax = plt.subplots(figsize=(8.0, 6.2), dpi=220)
     fig.patch.set_facecolor(pal["card"])
     ax.set_facecolor(pal["bg"])
     for zone in (level.fall_gap, level.pit):
@@ -327,18 +333,12 @@ def render_map(df: pd.DataFrame, issues: Sequence[Issue], level: Level, theme: s
         Rectangle((level.seam.left - 4, level.seam.top - 3), level.seam.width + 8, level.seam.height + 6,
                   fill=False, edgecolor=pal["red"], linewidth=1.6, zorder=3)
     )
-    if len(df):
-        cx = (df["pos_x"] + PLAYER_WIDTH / 2).to_numpy()
-        cy = (df["pos_y"] + PLAYER_HEIGHT / 2).to_numpy()
-        keep = (cx >= 0) & (cx <= WORLD_WIDTH) & (cy >= 0) & (cy <= WORLD_HEIGHT)
-        if keep.any():
-            heat, _, _ = np.histogram2d(cx[keep], cy[keep], bins=(160, 120), range=((0, WORLD_WIDTH), (0, WORLD_HEIGHT)))
-            heat = _blur(np.log1p(heat.T))
-            if heat.max() > 0:
-                g = matplotlib.colors.to_rgb(pal["green"])
-                cmap = LinearSegmentedColormap.from_list("iq_heat", [(*g, 0.0), (*g, 0.95 if theme == "dark" else 0.85)])
-                ax.imshow((heat / heat.max()) ** 0.6, extent=(0, WORLD_WIDTH, WORLD_HEIGHT, 0), cmap=cmap,
-                          interpolation="bicubic", zorder=4)
+    segments = _path_segments(df) if len(df) > 1 else np.empty((0, 2, 2))
+    if len(segments):
+        # Crisp paths; overlapping strokes build up colour where the bot went often.
+        alpha = float(np.clip(70.0 / len(segments) ** 0.7, 0.09, 0.8))
+        ax.add_collection(LineCollection(segments, colors=pal["green"], alpha=alpha, linewidths=1.7,
+                                         capstyle="round", zorder=4))
     for issue in issues:
         if issue.symptom_of is not None:
             continue
