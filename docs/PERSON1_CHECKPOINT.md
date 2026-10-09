@@ -4,7 +4,7 @@
 > **Event:** Neurobridge Game Summit 2026 Hackathon, Baku
 > **Repo:** https://github.com/GasimovDev/indieQA_bot
 > **Last updated:** 2026-10-09 — end of **Phase 2**
-> **Status:** ✅ Phase 1 · ✅ Phase 2 (`core/engine.py`, all self-tests pass) · 🔨 Phase 3 (`core/telemetry.py`) in progress — commits are local on `person1/core`; push pending repo access for `Qaqu2`
+> **Status:** ✅ Phase 1 · ✅ Phase 2 (`core/engine.py`, all self-tests pass) · ✅ Phase 3 (`core/telemetry.py`) · ⏭️ Phase 4 (`core/agent.py`) — commits are local on `person1/core`; push pending repo access for `Qaqu2`
 
 ---
 
@@ -14,8 +14,8 @@
 |---|---|---|
 | 1 | Environment scaffolding (`requirements.txt`, `core/__init__.py`, `data/logs/`) | ✅ Done |
 | 2 | Physics engine + 3 intentional glitches (`core/engine.py`) | ✅ Done (§5.0) |
-| 3 | Telemetry recorder (`core/telemetry.py`) | 🔨 In progress |
-| 4 | Autonomous agent (`core/agent.py`) | ⏳ Pending |
+| 3 | Telemetry recorder (`core/telemetry.py`) | ✅ Done (§5.1) |
+| 4 | Autonomous agent (`core/agent.py`) | ⏭️ Next |
 | 5 | CLI test runner (`main.py`) | ⏳ Pending |
 
 Each phase is only started after the previous one is confirmed functional by Person 1.
@@ -254,11 +254,35 @@ The engine only simulates; it never judges. Bugs are classified by Person 2's `a
 
 > ⚠️ Until Phase 5, the uploaded `main.py` / `core/agent.py` / `core/telemetry.py` still exist on this branch and `python main.py` is expected to fail (it imports the old `Engine`). They are replaced in Phases 3–5; `main` is untouched until then.
 
+## 5.1 Phase 3 — What We Did (`core/telemetry.py`) ✅
+
+- `TelemetryRecorder(path="data/logs/telemetry.csv", run_start_unix=None, batch_size=512)`
+  - `start()` / `record(state: FrameState)` / `close()`; also a context manager (`with TelemetryRecorder() as t:`).
+  - The game loop only enqueues a tuple (`queue.SimpleQueue`); a daemon **background writer thread** formats and writes rows in batches → no disk I/O on the frame path.
+  - `close()` flushes every queued row before returning (no data loss on exit); writer-thread errors are re-raised in the game loop.
+- Output format: header exactly per §4; floats with 4 decimals; timestamp `run_start_unix + frame_id/60` (6 decimals); booleans `True`/`False`; `active_input` as `"right+jump"` / `"none"`.
+
+**Self-test — `python -m core.telemetry`** (scripted tour through all 3 glitches):
+```
+[PASS] header matches contract  : frame_id,timestamp,pos_x,pos_y,vel_x,vel_y,is_grounded,active_input,collision_state
+[PASS] rows written             : 868 (frame_id 0..867, contiguous)
+[PASS] simulated timestamps     : start + frame_id/60
+[PASS] combo inputs recorded    : ['left+jump', 'right', 'right+jump']
+[PASS] >25px + collision frames : 1 (expected 1 = Wall_Clip)
+[PASS] record() cost            : mean 0.6 us, worst 0.011 ms (frame budget 16.7 ms)
+```
+
+**Compatibility check with Person 2's detector (version currently on GitHub, `c349a0a`):**
+- `pandas.read_csv` types: `frame_id` int64, positions/velocities float64, `is_grounded`/`collision_state` **bool**, `active_input` string ✅
+- Result: `{'Wall Clip': 1 (frame 713 — correct), 'Out of Bounds': 263}`.
+- Infinite Fall not reported → expected, it's the OOB short-circuit bug fixed locally by Person 2 but not yet pushed.
+- **New finding for Person 2 (Softlock):** `_check_softlock` records the start position on the *first* non-`"none"` input and only resets on a `"none"` frame. An agent that presses something every frame (ours does, by design) fixes the start position at its spawn, far from the pit → Softlock can **never** fire. Suggested fix (Person 2's call): compare against the position 300 frames ago (sliding window), not against the first input frame.
+
 ## 5. Remaining Phases — Plan
 
 ### Phase 2 — `core/engine.py` ✅ (see §5.0)
 
-### Phase 3 — `core/telemetry.py`
+### Phase 3 — `core/telemetry.py` ✅ (see §5.1)
 - `TelemetryRecorder` with `record(state: FrameState) -> None`, `start()`, `close()`.
 - Engine pushes rows to a `queue.Queue`; a **background writer thread** batches rows to CSV → no frame drops at 60 FPS.
 - Exact header from §4; booleans written as `True`/`False`; simulated timestamps.
@@ -320,4 +344,5 @@ With semi-implicit Euler and jump set as `vel_y = -v0`, the rise over frames `k 
 | 7 | `BugDetector` world size 1920×1080 vs engine 800×600 | Person 2 | Open |
 | 8 | OOB check short-circuits Infinite Fall detection + per-frame OOB spam | Person 2 | Fixed locally by Person 2 (debounce + all checks every frame) — **not yet pushed** |
 | 9 | Softlock false positives from always-on agent input | Person 2 | Open |
+| 12 | Softlock detector anchors start position at first input → never fires for an always-pressing agent (§5.1) | Person 2 | Open |
 | 11 | Manual pit test wording ambiguous — confirm player falls into the Softlock_Pit when played by hand | Person 1 | Open |
