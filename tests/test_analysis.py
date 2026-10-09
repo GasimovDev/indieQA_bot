@@ -7,6 +7,8 @@ import pandas as pd
 from analysis.bug_detector import BugDetector
 from analysis.reporter import BugReporter
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 def frames(count: int, **overrides: object) -> pd.DataFrame:
     rows = []
@@ -88,7 +90,7 @@ class DetectorTests(unittest.TestCase):
 
     def test_report_json_and_markdown(self) -> None:
         bug = BugDetector().process_telemetry(frames(1, pos_x=-1.))[0]
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=ROOT / 'data') as directory:
             BugReporter(directory).generate_all_reports([bug])
             output = Path(directory)
             self.assertEqual(json.loads(next(output.glob('*.json')).read_text()), bug)
