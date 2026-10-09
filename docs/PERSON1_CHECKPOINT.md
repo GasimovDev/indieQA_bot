@@ -3,8 +3,8 @@
 > **Project:** IndieQA — Autonomous QA Bug & Collision Hunter
 > **Event:** Neurobridge Game Summit 2026 Hackathon, Baku
 > **Repo:** https://github.com/GasimovDev/indieQA_bot
-> **Last updated:** 2026-10-09 — end of **Phase 1**
-> **Status:** ✅ Phase 1 complete (local commit; push pending repo access for `Qaqu2`) · ⏭️ Phase 2 (`core/engine.py`) — level layout proposed, awaiting approval
+> **Last updated:** 2026-10-09 — end of **Phase 2**
+> **Status:** ✅ Phase 1 · ✅ Phase 2 (`core/engine.py`, all self-tests pass) · ✅ Phase 3 (`core/telemetry.py`) · ✅ Phase 4 (`core/agent.py`) · ✅ Phase 5 (`main.py`) — on branch `person1/core`, merge into `main` pending approval
 
 ---
 
@@ -13,10 +13,10 @@
 | Phase | Deliverable | Status |
 |---|---|---|
 | 1 | Environment scaffolding (`requirements.txt`, `core/__init__.py`, `data/logs/`) | ✅ Done |
-| 2 | Physics engine + 3 intentional glitches (`core/engine.py`) | ⏭️ Next |
-| 3 | Telemetry recorder (`core/telemetry.py`) | ⏳ Pending |
-| 4 | Autonomous agent (`core/agent.py`) | ⏳ Pending |
-| 5 | CLI test runner (`main.py`) | ⏳ Pending |
+| 2 | Physics engine + 3 intentional glitches (`core/engine.py`) | ✅ Done (§5.0) |
+| 3 | Telemetry recorder (`core/telemetry.py`) | ✅ Done (§5.1) |
+| 4 | Autonomous agent (`core/agent.py`) | ✅ Done (§5.2) |
+| 5 | CLI test runner (`main.py`) | ✅ Done (§5.3) — awaiting merge into `main` |
 
 Each phase is only started after the previous one is confirmed functional by Person 1.
 
@@ -136,7 +136,7 @@ All units are **pixels** and **pixels/frame**. Fixed timestep **dt = 1/60 s** (6
 
 | Glitch | Mechanism | What Person 2's detector sees |
 |---|---|---|
-| **Wall_Clip** | A corner is built from two collider segments with a **2 px seam**. Planted resolver bug: when the hitbox overlaps the seam with a high-speed diagonal velocity, the engine applies minimum-translation (shortest-exit) push-out — and inside the seam the shortest exit is the **far side** of the wall. | One-frame jump Δp ≥ wall thickness + player width (> 25 px) crossing a solid surface; player ends **outside** the arena (also OOB). |
+| **Wall_Clip** | A corner is built from two collider segments with a **2 px seam**. Planted resolver bug: when the hitbox straddles the seam (overlaps both segments) during a high-speed diagonal move, the engine's "unstuck" routine ejects the player along its velocity to the first free space — the **far side** of the wall. *(Refined in Phase 2 from the original shortest-exit idea; see §5.0.)* | One-frame jump Δp ≥ wall thickness + player width (> 25 px) crossing a solid surface; player ends **outside** the arena (also OOB). |
 | **Infinite_Fall** | One floor segment has **no collider and no kill-plane**; terminal velocity is disabled there. | `collision_state = False` for > 120 consecutive frames, `vel_y` monotonically increasing, `pos_y → +∞` (y-down coordinates, i.e. `y > H` OOB). |
 | **Softlock_Pit** | Enclosed U-pit, wall height **h = 150 px** vs jump **j_max = 100 px** → 50 px unclimbable margin. No ledges, no wall-jump. Interior ≈ player width + small margin. | Continuous input > 300 frames, displacement (window start → current frame) < 5 px whenever the agent is back on the pit floor. |
 
@@ -167,39 +167,190 @@ Confirmed by Person 2:
 
 ---
 
+## 5.0 Phase 2 — What We Did (`core/engine.py`) ✅
+
+### Approved level layout (800 × 600, floor surface y = 440)
+```
+y=0   ┌──────────────────────── ceiling (16px) ───────────────────────────┐
+      │L                                                               R  │
+      │W                                    ┌─platform─┐               u  │
+y=360 │                                     │560..680  │               p  │
+      │    S1                S2             └──────────┘     S3        p  │
+y=406 │                                                         2px seam ═│ ← WALL_CLIP
+y=440 ├─────── floor A ─────┐     ┌─ floor B ─┐  ┌──── floor C ──────────┤
+      │      16..240        │ GAP │  300..440 │PIT│      480..800         │
+y=590 │                     │60px │           │40w│                      │
+y=600 └─────────────────────┘  ↓  └───────────┴───┴──────────────────────┘
+                          INFINITE_FALL     SOFTLOCK (150 deep)
+```
+
+| Collider | Rect (x, y, w, h) | Kind |
+|---|---|---|
+| ceiling | (0, 0, 800, 16) | solid |
+| left_wall | (0, 0, 16, 600) | solid |
+| floor_a | (16, 440, 224, 160) | solid |
+| *(gap x 240–300)* | — no collider — | **Infinite_Fall** |
+| floor_b | (300, 440, 140, 160) | solid |
+| pit_floor | (440, 590, 40, 10) | solid (**Softlock_Pit** bottom) |
+| floor_c | (480, 440, 320, 160) | solid |
+| platform | (560, 360, 120, 16) | solid (80 px above floor → reachable) |
+| right_wall_upper | (784, 0, 16, 406) | **seam** |
+| right_wall_lower | (784, 408, 16, 32) | **seam** (2 px gap at y 406–408) |
+
+Spawn points (4 px above the floor, so the respawn frame has `collision_state = False`): **S1 (40, 404)**, **S2 (340, 404)**, **S3 (640, 404)**.
+
+### Glitch mechanics as implemented
+- **Wall_Clip:** in the X-resolution pass, if the player box overlaps **both** seam segments at once (only possible while airborne with `376 < pos_y < 406`, i.e. rising/falling at ~9–10 px/frame → genuinely diagonal, high-velocity) the engine's buggy "unstuck" routine pushes the player along `sign(vel_x)` to the first free space → outside the arena. The frame is tagged `glitch_event = Wall_Clip`, `collision_state = True`.
+- **Infinite_Fall:** no collider in the gap; terminal velocity (15) is enforced only while the player centre is inside the world rectangle → uncapped below y = 600. Engine never teleports/resets.
+- **Softlock_Pit:** 150 px deep, 40 px wide (8 px drop-in window ≥ 6 px/frame max step → the agent can't skate over it). Discrete apex is exactly 100 px → 50 px unclimbable.
+
+### Public API (what Phases 3–5 build on)
+| Symbol | Purpose |
+|---|---|
+| `GameEngine(headless=True, level=None, spawn_index=0)` | Create the simulation; rendered mode opens an 800×600 window |
+| `engine.step(inputs: InputState) -> FrameState` | Advance exactly one frame (deterministic) |
+| `engine.reset(spawn_index)` | New episode at S1/S2/S3 (wraps); `frame_id` keeps counting |
+| `engine.render(state, hud_lines=()) -> bool` | Draw + hold 60 FPS; `False` when window closed; no-op headless |
+| `engine.level` | `Level` (colliders, spawn points, `fall_gap`, `pit`, `seam` rects) — for the agent's probes |
+| `InputState(left, right, jump)` | `.label` → `"right+jump"` / `"none"`; `InputState.from_label()` for replays |
+| `FrameState` | `frame_id, pos_x, pos_y, vel_x, vel_y, is_grounded, active_input, collision_state` (CSV) + `zone, glitch_event, episode` (runner/agent only) |
+| `Zone` | `arena`, `fall_shaft`, `softlock_pit`, `out_of_world` — used by `main.py` for episode resets |
+
+The engine no longer owns the agent or the telemetry logger (unlike the uploaded version): `main.py` wires `agent → engine → telemetry`.
+
+### Self-test result — `python -m core.engine`
+```
+[PASS] jump apex            = 100.0000px (j_max 100px)
+[PASS] Softlock_Pit         : trapped 600 frames of jump spam, max rise 100.00px < wall 150px
+[PASS] Infinite_Fall        : 281 frames without collision, vel_y 154.0px/f (uncapped), pos_y 24201
+[PASS] Wall_Clip            : frame 56 jumped 48.79px to (800.0, 389.0), collision=True
+[PASS] no false >25px moves : 20000 random frames
+```
+Rendered mode verified off-screen (window drawing, HUD, zone labels, 60 FPS clock).
+
+### Manual play mode — `python -m core.engine --play`
+Run from the repo root (PowerShell needs the `.\` prefix):
+```powershell
+cd C:\Users\Fidan-HP\Desktop\instruction\indieQA_bot
+.\venv\Scripts\python.exe -m core.engine          # automatic self-test
+.\venv\Scripts\python.exe -m core.engine --play   # keyboard play
+```
+Controls: ←/→ or A/D move · Space/↑/W jump · 1/2/3 respawn at S1/S2/S3 · Esc quit.
+
+**Manual test by Person 1 (2026-10-09):**
+| Check | Result |
+|---|---|
+| Infinite_Fall (S1 → walk into red gap) | ✅ falls forever |
+| Wall_Clip (S3 → run + jump into right wall) | ✅ passes through the wall |
+| Softlock_Pit (S2 → walk into yellow pit) | ⚠️ wording ambiguous ("did now fall") — to confirm whether the player falls in; the automated self-test confirms it does |
+
+### Where do detected bugs appear? (full pipeline)
+```
+engine (game)  →  telemetry.csv  →  bug_detector + reporter  →  Streamlit dashboard
+  Person 1         Person 1           Person 2                   Person 2
+  ✅ Phase 2       Phase 3            analysis/  → data/reports/  dashboard/app.py
+```
+The engine only simulates; it never judges. Bugs are classified by Person 2's `analysis/bug_detector.py` from the CSV, written as Markdown/JSON by `analysis/reporter.py` into `data/reports/`, and shown on the **local** website started with `streamlit run dashboard/app.py` (http://localhost:8501). The dashboard stays empty until telemetry (Phase 3) produces `data/logs/telemetry.csv`.
+
+> ⚠️ Until Phase 5, the uploaded `main.py` / `core/agent.py` / `core/telemetry.py` still exist on this branch and `python main.py` is expected to fail (it imports the old `Engine`). They are replaced in Phases 3–5; `main` is untouched until then.
+
+## 5.1 Phase 3 — What We Did (`core/telemetry.py`) ✅
+
+- `TelemetryRecorder(path="data/logs/telemetry.csv", run_start_unix=None, batch_size=512)`
+  - `start()` / `record(state: FrameState)` / `close()`; also a context manager (`with TelemetryRecorder() as t:`).
+  - The game loop only enqueues a tuple (`queue.SimpleQueue`); a daemon **background writer thread** formats and writes rows in batches → no disk I/O on the frame path.
+  - `close()` flushes every queued row before returning (no data loss on exit); writer-thread errors are re-raised in the game loop.
+- Output format: header exactly per §4; floats with 4 decimals; timestamp `run_start_unix + frame_id/60` (6 decimals); booleans `True`/`False`; `active_input` as `"right+jump"` / `"none"`.
+
+**Self-test — `python -m core.telemetry`** (scripted tour through all 3 glitches):
+```
+[PASS] header matches contract  : frame_id,timestamp,pos_x,pos_y,vel_x,vel_y,is_grounded,active_input,collision_state
+[PASS] rows written             : 868 (frame_id 0..867, contiguous)
+[PASS] simulated timestamps     : start + frame_id/60
+[PASS] combo inputs recorded    : ['left+jump', 'right', 'right+jump']
+[PASS] >25px + collision frames : 1 (expected 1 = Wall_Clip)
+[PASS] record() cost            : mean 0.6 us, worst 0.011 ms (frame budget 16.7 ms)
+```
+
+**Compatibility check with Person 2's detector (version currently on GitHub, `c349a0a`):**
+- `pandas.read_csv` types: `frame_id` int64, positions/velocities float64, `is_grounded`/`collision_state` **bool**, `active_input` string ✅
+- Result: `{'Wall Clip': 1 (frame 713 — correct), 'Out of Bounds': 263}`.
+- Infinite Fall not reported → expected, it's the OOB short-circuit bug fixed locally by Person 2 but not yet pushed.
+- **New finding for Person 2 (Softlock):** `_check_softlock` records the start position on the *first* non-`"none"` input and only resets on a `"none"` frame. An agent that presses something every frame (ours does, by design) fixes the start position at its spawn, far from the pit → Softlock can **never** fire. Suggested fix (Person 2's call): compare against the position 300 frames ago (sliding window), not against the first input frame.
+
+## 5.2 Phase 4 — What We Did (`core/agent.py`) ✅
+
+`QAAgent(level, seed=0)` → `decide(state: FrameState) -> InputState`, one call per frame. Exposes `mode` (`AgentMode.BOUNDARY_SEEKER` / `INPUT_SPAMMER`) for the HUD.
+
+**Black-box rule:** the agent only uses the player's kinematic state + the static collider list. It never reads `zone` / `glitch_event` (those are for the runner and tests).
+
+| Mode | Behaviour |
+|---|---|
+| **Boundary_Seeker** | Horizontal raycasts at head/mid/feet height find the nearest wall in its heading; downward ground probes (every 4 px, up to 120 px ahead) find ledges/gaps. Walks to the boundary, **hugs ledges** 6–20 frames, then drops off (50 %), jumps across (30 %) or turns back (20 %). Random 2 % hops find the platform. Airborne → keeps pushing toward the boundary (diagonal approach into walls/corners). |
+| **Input_Spammer** | Entered on collision frames where the agent is pressed into a wall (≤ 1.5 px). 45–120 frames of combos, each held 2–6 frames: diagonal-into-wall + jump 45 %, push 20 %, vertical hop 15 %, back off 12 %, reverse diagonal 8 %. **Never emits `none`.** If still pinned when the timer ends (e.g. trapped in the pit) it re-arms instead of idling. |
+
+Seeded `random.Random` → same seed ⇒ identical input sequence (reproducible `reproduction_sequence`). New episode (engine `reset`) ⇒ mode/heading re-initialised.
+
+**Self-test — `python -m core.agent`** (30,000 frames ≈ 8 min of game time, ~5 s wall time):
+```
+[PASS] deterministic             : seed 42 twice -> identical 30000 inputs
+[PASS] seed-sensitive            : seed 7 -> different run
+[PASS] both modes active         : {'Boundary_Seeker': '42%', 'Input_Spammer': '58%'}, 252 mode switches
+[PASS] combo inputs              : ['left+jump', 'right+jump']
+[PASS] glitches reached          : {'Wall_Clip': 17, 'Infinite_Fall': 17, 'Softlock_Pit': 12}
+```
+Trapped-in-pit check (seed 7): 1,962 pit frames, **0 × `none`**, x confined to 440–448 px.
+
+## 5.3 Phase 5 — What We Did (`main.py`) ✅
+
+```powershell
+.\venv\Scripts\python.exe main.py                       # watch the agent play at 60 FPS (Esc / close window to stop)
+.\venv\Scripts\python.exe main.py --headless            # fast run, 7200 frames (2 min game time)
+.\venv\Scripts\python.exe main.py --headless --frames 36000 --seed 7 --analyze
+```
+| Flag | Default | Meaning |
+|---|---|---|
+| `--headless` | off | no window, max speed |
+| `--frames` | 7200 | frames to simulate (60 per game second) |
+| `--seed` | 42 | agent + spawn rotation seed (same seed ⇒ same run) |
+| `--out` | `data/logs/telemetry.csv` | CSV path |
+| `--episode-max` | 3600 | max frames per episode |
+| `--analyze` | off | afterwards, feed the CSV to Person 2's `analysis.bug_detector` (read-only use) |
+
+Loop: `agent.decide → engine.step → telemetry.record → engine.render` (render is a no-op headless).
+**Episode policy (runner, not engine):** respawn after > 300 frames without collision (fell / clipped out), > 600 frames in the pit, or `--episode-max`. Spawn S1/S2/S3 in a seeded shuffled rotation. Ctrl+C flushes telemetry safely.
+
+**End-to-end result** — `main.py --headless --frames 36000 --analyze` (seed 42):
+```
+frames simulated : 36000 (600.0 s game time in 2.1 s)
+episodes         : 65  resets: {'fell (no collision > 300 frames)': 48, 'trapped in pit > 600 frames': 16}
+glitch events    : {'Wall_Clip': 22}
+[analyze] bug_detector reported 14446 bug(s): {'Out of Bounds': 14424, 'Wall Clip': 22}
+```
+- Person 2's detector (GitHub version `c349a0a`) finds **22 / 22 Wall Clips** (exact match with engine ground truth).
+- Same CSV checked against the **spec rules** directly: **48 Infinite Fall** events (> 120 frames falling without collision) and **13 Softlock** events (sliding 300-frame window, < 5 px). → The telemetry contains all 3 glitches; the remaining gaps are the known detector issues (§8 items 8, 9, 12).
+- Rendered mode: 300 frames in 5.0 s → real-time 60 FPS confirmed.
+
+All four uploaded Person-2 versions of Person 1 files (`core/engine.py`, `core/agent.py`, `core/telemetry.py`, `main.py`) are now replaced on this branch. Entry points kept: `python main.py`, `python main.py --headless`, output `data/logs/telemetry.csv`.
+
 ## 5. Remaining Phases — Plan
 
-### Phase 2 — `core/engine.py` (NEXT)
-**Deliverables**
-- `GameEngine` class with explicit type hints; works in **headless** (`SDL_VIDEODRIVER=dummy`, no clock throttle) and **rendered** (window, `clock.tick(60)`) modes.
-- Physics step `step(inputs: InputState) -> FrameState` — deterministic, fixed dt.
-- Kinematic player controller: run accel / friction / max speed, jump only when grounded, gravity, terminal velocity (disabled in the Infinite_Fall zone).
-- Level geometry as a list of named `pygame.Rect` colliders: outer boundary walls, floor, platforms, plus the 3 glitch structures.
-- Axis-separated AABB collision resolution (X then Y) for normal geometry; the deliberately flawed shortest-exit resolver only for the Wall_Clip seam colliders.
-- `FrameState` dataclass exposing exactly what telemetry needs: `frame_id, pos_x, pos_y, vel_x, vel_y, is_grounded, collision_state, active_input`.
-- Simple rendering (colored rects; glitch zones optionally highlighted for the demo/pitch).
-- Self-test (`python -m core.engine`) that scripts inputs to prove: (a) jump apex ≤ 100 px, (b) each of the 3 glitches is reproducible.
+### Phase 2 — `core/engine.py` ✅ (see §5.0)
 
-**Design points to settle during Phase 2 (will be raised before coding)**
-1. **Level layout on 800 × 600.** The Softlock pit must be 150 px deep *without* its floor leaving the world (else it reads as OOB). Plan: main floor surface raised (≈ y 420) so the pit (≈ 420 → 570) fits inside `H = 600`.
-2. **Pit entrance width vs. agent speed.** A pit only 4 px wider than the player is a 4 px "drop-in window", but the agent moves up to 6 px/frame and could skip over it. Options: (a) ~40 px interior (8 px window ≥ max speed), (b) a narrow drop-in chute from a platform above. Must keep horizontal wiggle < 5 px for the detector.
-3. **Infinite_Fall gap width** — must be > 32 px so the player actually falls through.
-4. **Wall_Clip corner location** — which corner, wall thickness (sets the Δp jump size), and the velocity condition that arms the bug.
-
-### Phase 3 — `core/telemetry.py`
+### Phase 3 — `core/telemetry.py` ✅ (see §5.1)
 - `TelemetryRecorder` with `record(state: FrameState) -> None`, `start()`, `close()`.
 - Engine pushes rows to a `queue.Queue`; a **background writer thread** batches rows to CSV → no frame drops at 60 FPS.
 - Exact header from §4; booleans written as `True`/`False`; simulated timestamps.
 - Clean shutdown flush (context manager) so no rows are lost on exit/Ctrl+C.
 
-### Phase 4 — `core/agent.py`
+### Phase 4 — `core/agent.py` ✅ (see §5.2)
 - `QAAgent` state machine: `decide(state: FrameState) -> InputState`.
 - **Boundary_Seeker:** probes/raycasts against level colliders to find nearest walls, ledges and corners; moves to and hugs them.
 - **Input_Spammer:** triggered on collision frames (wall/corner contact); rapid non-linear combos (diagonals + jump spam, direction toggles) to force clips. Returns to Boundary_Seeker after N frames or when contact ends.
 - Seeded RNG → fully reproducible runs (helps Person 2's `reproduction_sequence`).
 - Must keep spamming while trapped (so the Softlock detector fires).
 
-### Phase 5 — `main.py`
+### Phase 5 — `main.py` ✅ (see §5.3)
 - CLI flags (planned): `--headless`, `--frames N`, `--seed S`, `--fps 60`, `--out data/logs/telemetry.csv`.
 - Loop: `agent.decide → engine.step → telemetry.record → (render)`.
 - End-of-run summary printed to console (frames, time simulated, CSV path).
@@ -209,8 +360,8 @@ Confirmed by Person 2:
 
 ## 6. Technical Notes
 
-### 6.1 Integration order (planned)
-Semi-implicit Euler per frame: `vel += accel`, then `pos += vel`, then resolve collisions.
+### 6.1 Integration order (implemented)
+Per frame: horizontal accel/friction → jump impulse (if grounded) → `vel_y += g` (+ cap inside world) → `pos_x += vel_x`, resolve X (seam bug lives here) → `pos_y += vel_y`, resolve Y → contact test (1 px tolerance counts as touching).
 
 ### 6.2 Jump impulse derivation (discrete, not continuous)
 With semi-implicit Euler and jump set as `vel_y = -v0`, the rise over frames `k = 1..n` is
@@ -218,7 +369,7 @@ With semi-implicit Euler and jump set as `vel_y = -v0`, the rise over frames `k 
 - `v0 = 10.0`, `g = 0.5` → apex **95 px** (continuous formula `v0²/2g` would wrongly predict 100).
 - `v0 = 10.25`, `g = 0.5` → 20 rising frames, apex `20·10.25 − 0.5·(20·21/2) =` **100.0 px exactly**.
 
-→ Planned `v0 = 10.25 px/frame`, to be verified by the Phase 2 self-test. Pit wall 150 px ⇒ 50 px unclimbable margin.
+→ `v0 = 10.25 px/frame` — **verified** by the Phase 2 self-test (apex 100.0000 px). Pit wall 150 px ⇒ 50 px unclimbable margin.
 
 ### 6.3 Coding standards (from spec)
 - Python 3.11+, explicit type hints on all interfaces, **no `# TODO`/draft code**, fully local (no API keys).
@@ -227,7 +378,7 @@ With semi-implicit Euler and jump set as `vel_y = -v0`, the rise over frames `k 
 
 ## 7. Git Workflow
 
-- **Branch:** working on `main` (small team, strictly disjoint file ownership → near-zero conflict risk; avoids PR overhead under hackathon time pressure).
+- **Branch (approved 2026-10-09):** Phases 2–4 live on **`person1/core`**; merged into `main` at Phase 5 once `python main.py --headless` works end-to-end, so `main` never has a half-replaced `core/`. Day-to-day the team still works on `main` with disjoint file ownership.
 - **Before every push:** `git pull --rebase origin main`.
 - **Shared files** (`requirements.txt`, `.gitignore`, `README.md`): coordinate in chat before editing.
 - **Suggested `.gitignore` addition** (for whoever owns it): `data/logs/*.csv` — telemetry is regenerated every run and can get large.
@@ -239,12 +390,14 @@ With semi-implicit Euler and jump set as `vel_y = -v0`, the rise over frames `k 
 | # | Item | Owner | Status |
 |---|---|---|---|
 | 1 | `pos_x/pos_y` = hitbox top-left or center? | Person 2 | Open |
-| 2 | Pit entrance width vs. 6 px/frame agent speed (§5 Phase 2 point 2) | Person 1 | To decide in Phase 2 |
-| 3 | Level layout coordinates (floor height, platforms, glitch locations) | Person 1 | To propose in Phase 2 |
+| 2 | Pit entrance width vs. 6 px/frame agent speed | Person 1 | ✅ Resolved: 40 px pit (8 px window) |
+| 3 | Level layout coordinates | Person 1 | ✅ Approved & implemented (§5.0) |
 | 4 | Person 2's local `requirements.txt` not yet pushed — identical content, should merge cleanly | Person 2 | Info |
 | 5 | Add `data/logs/*.csv` to `.gitignore` | Team | Suggested |
 | 6 | Who owns `core/`? `LRigloo` (= Person 2) uploaded `core/*.py` + `main.py` (§2.3.1) | Team | ✅ **Decided 2026-10-09: REPLACE** — Person 1 rebuilds `core/` + `main.py` to the approved spec, keeping the entry points (`python main.py [--headless]`, same CSV path/columns) |
 | 10 | `Qaqu2` has no push access to `GasimovDev/indieQA_bot` (HTTP 403) | GasimovDev | Open — add as collaborator |
 | 7 | `BugDetector` world size 1920×1080 vs engine 800×600 | Person 2 | Open |
-| 8 | OOB check short-circuits Infinite Fall detection + per-frame OOB spam | Person 2 | Open |
+| 8 | OOB check short-circuits Infinite Fall detection + per-frame OOB spam | Person 2 | Fixed locally by Person 2 (debounce + all checks every frame) — **not yet pushed** |
 | 9 | Softlock false positives from always-on agent input | Person 2 | Open |
+| 12 | Softlock detector anchors start position at first input → never fires for an always-pressing agent (§5.1) | Person 2 | Open |
+| 11 | Manual pit test wording ambiguous — confirm player falls into the Softlock_Pit when played by hand | Person 1 | Open |
