@@ -1,0 +1,122 @@
+{
+  "world": {
+    "width": 800,
+    "height": 600,
+    "y_axis": "down"
+  },
+  "player_size": [
+    32,
+    32
+  ],
+  "colliders": [
+    {
+      "name": "ceiling",
+      "kind": "solid",
+      "x": 0,
+      "y": 0,
+      "w": 800,
+      "h": 16
+    },
+    {
+      "name": "left_wall",
+      "kind": "solid",
+      "x": 0,
+      "y": 0,
+      "w": 16,
+      "h": 600
+    },
+    {
+      "name": "floor_a",
+      "kind": "solid",
+      "x": 16,
+      "y": 440,
+      "w": 224,
+      "h": 160
+    },
+    {
+      "name": "floor_b",
+      "kind": "solid",
+      "x": 300,
+      "y": 440,
+      "w": 140,
+      "h": 160
+    },
+    {
+      "name": "pit_floor",
+      "kind": "solid",
+      "x": 440,
+      "y": 590,
+      "w": 40,
+      "h": 10
+    },
+    {
+      "name": "floor_c",
+      "kind": "solid",
+      "x": 480,
+      "y": 440,
+      "w": 320,
+      "h": 160
+    },
+    {
+      "name": "platform",
+      "kind": "solid",
+      "x": 560,
+      "y": 360,
+      "w": 120,
+      "h": 16
+    },
+    {
+      "name": "right_wall_upper",
+      "kind": "seam",
+      "x": 784,
+      "y": 0,
+      "w": 16,
+      "h": 406
+    },
+    {
+      "name": "right_wall_lower",
+      "kind": "seam",
+      "x": 784,
+      "y": 408,
+      "w": 16,
+      "h": 32
+    }
+  ],
+  "glitch_zones": {
+    "Infinite_Fall": {
+      "x": 240,
+      "y": 440,
+      "w": 60,
+      "h": 160
+    },
+    "Softlock_Pit": {
+      "x": 440,
+      "y": 440,
+      "w": 40,
+      "h": 150
+    },
+    "Wall_Clip": {
+      "x": 784,
+      "y": 406,
+      "w": 16,
+      "h": 2
+    }
+  },
+  "spawn_points": [
+    {
+      "name": "S1",
+      "x": 40.0,
+      "y": 404.0
+    },
+    {
+      "name": "S2",
+      "x": 340.0,
+      "y": 404.0
+    },
+    {
+      "name": "S3",
+      "x": 640.0,
+      "y": 404.0
+    }
+  ]
+}

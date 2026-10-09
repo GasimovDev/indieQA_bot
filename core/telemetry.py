@@ -159,6 +159,7 @@ class TelemetryRecorder:
                         batch.append(self._format(item))  # type: ignore[arg-type]
                 if batch:
                     writer.writerows(batch)
+                    handle.flush()  # whole rows on disk now -> the dashboard can read the CSV live
                     self.frames_written += len(batch)
                     batch.clear()
                 if stop:

@@ -119,6 +119,64 @@ This only *reads* Person 1's code — no edits needed.
 
 ---
 
+## 5b. LIVE demo mode — bugs appear on the website while the game plays ⭐
+
+**Goal for the pitch:** two windows side by side: the game window (bot playing) + the website, where the
+bot's trail grows and a red marker pops up the moment each bug happens.
+
+**What Person 1 already provides:** while `python main.py --seed 11` runs (real-time, 60 FPS), the CSV is
+written and flushed to disk continuously (verified: 166 rows after 2 s, 386 after 4 s). With seed 11 the
+bugs happen at **1.4 s (Wall Clip), 3.4 s (Infinite Fall), 12.4 s (Softlock)**.
+
+**What the website must do:** re-read the CSV every ~1 s and run Person 2's detector on the *new* rows.
+Streamlit 1.65 (our version) supports this:
+```python
+import os, pandas as pd, streamlit as st
+from analysis.bug_detector import BugDetector
+
+CSV = "data/logs/telemetry.csv"
+
+@st.fragment(run_every=1)          # re-runs only this part of the page every second
+def live_view() -> None:
+    if not os.path.exists(CSV):
+        st.info("Start the game: python main.py --seed 11"); return
+    df = pd.read_csv(CSV)
+    ss = st.session_state
+    if "rows_seen" not in ss or len(df) < ss.rows_seen:   # first load, or a NEW run started
+        ss.detector, ss.rows_seen = BugDetector(800, 600), 0
+    bugs = ss.detector.process_telemetry(df.iloc[ss.rows_seen:])   # detector keeps its state
+    ss.rows_seen = len(df)
+    # draw: level map + df trail (pos_x, pos_y) + red markers at each bug["coordinates_xyz"]
+    # update: frames, game time (len(df) / 60), bug counts per type, bug table
+
+live_view()
+```
+- A new run of `main.py` overwrites the CSV → the row count drops → the code above resets automatically.
+- The headless run (`--headless`) finishes in ~3 s — use it for the full report view, not for the live view.
+
+**Demo script:** open the website first → start `python main.py --seed 11` → place both windows side by side.
+
+---
+
+## 5c. Mockup review (please fix before the pitch)
+
+The mockup looks great, but judges may compare the map with the game window, so it must match reality.
+Use the **real level**: [`docs/level_map.png`](level_map.png) (picture) and
+[`docs/level_geometry.json`](level_geometry.json) (exact rectangles, or `core.engine.build_level()` in Python).
+
+| Mockup | Reality |
+|---|---|
+| Several floating platforms, wavy floor | One flat floor at **y = 440**, **one** platform (x 560–680, y 360), walls left/right, ceiling |
+| One smooth dotted bot path | Draw the **real trail** from `pos_x`, `pos_y` in the CSV (or a heatmap of it) |
+| Wall Clip marker mid-air (x 728, y 214) | Wall Clips happen at the **right wall**: x ≈ 750–800, y ≈ 380–410 |
+| Infinite Fall at x 268 | ✅ correct area (gap x 240–300) |
+| Softlock at x 458, y 506 | ✅ correct area (pit x 440–480, floor at y ≈ 558) |
+| Same bug type with different severities (Infinite Fall CRITICAL / HIGH / MEDIUM) | Show the `severity` field from the report files — don't invent it |
+| "Test coverage 87%", "Critical bugs 22" | Only show numbers computed from the data (e.g. coverage = % of 50×50 px map cells visited) |
+| Counts 22 / 48 / 16 | These are the true counts from a 36,000-frame run (seed 42); the site must show what the **detector** reports, not hard-coded numbers |
+
+---
+
 ## 6. Check your work
 
 - [ ] `python main.py --headless --frames 36000 --analyze` then reload the site → numbers change
