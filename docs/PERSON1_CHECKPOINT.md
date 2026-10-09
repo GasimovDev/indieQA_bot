@@ -4,7 +4,7 @@
 > **Event:** Neurobridge Game Summit 2026 Hackathon, Baku
 > **Repo:** https://github.com/GasimovDev/indieQA_bot
 > **Last updated:** 2026-10-09 — end of **Phase 2**
-> **Status:** ✅ Phase 1 · ✅ Phase 2 (`core/engine.py`, all self-tests pass) · ✅ Phase 3 (`core/telemetry.py`) · ✅ Phase 4 (`core/agent.py`) · ✅ Phase 5 (`main.py`) — on branch `person1/core`, merge into `main` pending approval
+> **Status:** ✅ Phase 1 · ✅ Phase 2 (`core/engine.py`, all self-tests pass) · ✅ Phase 3 (`core/telemetry.py`) · ✅ Phase 4 (`core/agent.py`) · ✅ Phase 5 (`main.py`) — **all of Module 1 merged into `main` (2026-10-09, merge `e825a1e`)**
 
 ---
 
@@ -16,7 +16,7 @@
 | 2 | Physics engine + 3 intentional glitches (`core/engine.py`) | ✅ Done (§5.0) |
 | 3 | Telemetry recorder (`core/telemetry.py`) | ✅ Done (§5.1) |
 | 4 | Autonomous agent (`core/agent.py`) | ✅ Done (§5.2) |
-| 5 | CLI test runner (`main.py`) | ✅ Done (§5.3) — awaiting merge into `main` |
+| 5 | CLI test runner (`main.py`) | ✅ Done (§5.3) — merged into `main` |
 
 Each phase is only started after the previous one is confirmed functional by Person 1.
 
