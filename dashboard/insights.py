@@ -30,18 +30,27 @@ from analysis.bug_detector import BugDetector
 from core.engine import FPS, PLAYER_HEIGHT, PLAYER_WIDTH, WORLD_HEIGHT, WORLD_WIDTH, ColliderKind, Level
 
 # ---------------------------------------------------------------- palette
-CREME: Final[str] = "#F7F1E3"
-CARD: Final[str] = "#FFFBF3"
-BORDER: Final[str] = "#E6DAC3"
-INK: Final[str] = "#3A3328"
-MUTED: Final[str] = "#857A66"
-RED: Final[str] = "#C8553D"
-RED_SOFT: Final[str] = "#F4D9D1"
-GREEN: Final[str] = "#5E9C6B"
-GREEN_SOFT: Final[str] = "#DCEBD8"
-SAND: Final[str] = "#D4A85F"
+# Two themes: a soft (low-glare) creme light mode and a warm dark mode, with the same colour roles.
+THEMES: Final[dict[str, dict[str, str]]] = {
+    "light": {
+        "bg": "#EFE8D8", "card": "#F8F3E8", "card2": "#ECE3D0", "border": "#D9CCB1",
+        "ink": "#2B251D", "muted": "#675D4B", "red": "#B4513D", "red_soft": "#EFD3C9",
+        "green": "#4A8758", "green_soft": "#D3E5CE", "sand": "#B98E43",
+        "solid": "#CDBF9F", "seam": "#D69A8D", "zone": "#EBCFC6",
+        "P0": "#B3443A", "P1": "#D2786A", "P2": "#B98E43", "P3": "#5C9A69",
+    },
+    "dark": {
+        "bg": "#181613", "card": "#221F1A", "card2": "#2C2822", "border": "#3A342B",
+        "ink": "#EEE6D4", "muted": "#ADA18A", "red": "#E58771", "red_soft": "#43271F",
+        "green": "#86C493", "green_soft": "#1F3526", "sand": "#D8B272",
+        "solid": "#4A443A", "seam": "#8C4E43", "zone": "#3A221D",
+        "P0": "#E6705C", "P1": "#EBA092", "P2": "#D8B272", "P3": "#86C493",
+    },
+}
 
-TIER_COLOURS: Final[dict[str, str]] = {"P0": "#B8463A", "P1": "#DE8577", "P2": SAND, "P3": "#6FA77A"}
+
+def palette(theme: str) -> dict[str, str]:
+    return THEMES.get(theme, THEMES["light"])
 
 # --------------------------------------------------------------- priority
 SEVERITY_WEIGHT: Final[dict[str, float]] = {"CRITICAL": 3.0, "HIGH": 2.0, "MEDIUM": 1.0, "LOW": 0.5}
@@ -296,52 +305,60 @@ def _surface_coverage(df: pd.DataFrame, level: Level) -> tuple[int, int]:
 
 
 # ------------------------------------------------------------------ map
-_HEAT = LinearSegmentedColormap.from_list("iq_heat", [(0.0, (0.37, 0.61, 0.42, 0.0)), (1.0, (0.37, 0.61, 0.42, 0.85))])
+def _blur(a: np.ndarray, passes: int = 2) -> np.ndarray:
+    kernel = np.array([1.0, 4.0, 6.0, 4.0, 1.0]) / 16.0
+    for _ in range(passes):
+        a = np.apply_along_axis(lambda r: np.convolve(r, kernel, mode="same"), 0, a)
+        a = np.apply_along_axis(lambda r: np.convolve(r, kernel, mode="same"), 1, a)
+    return a
 
 
-def render_map(df: pd.DataFrame, issues: Sequence[Issue], level: Level) -> bytes:
-    fig, ax = plt.subplots(figsize=(8.0, 6.3), dpi=110)
-    fig.patch.set_facecolor(CARD)
-    ax.set_facecolor(CREME)
+def render_map(df: pd.DataFrame, issues: Sequence[Issue], level: Level, theme: str = "light") -> bytes:
+    pal = palette(theme)
+    fig, ax = plt.subplots(figsize=(8.0, 6.2), dpi=170)
+    fig.patch.set_facecolor(pal["card"])
+    ax.set_facecolor(pal["bg"])
     for zone in (level.fall_gap, level.pit):
-        ax.add_patch(Rectangle((zone.left, zone.top), zone.width, zone.height, color=RED_SOFT, zorder=1))
+        ax.add_patch(Rectangle((zone.left, zone.top), zone.width, zone.height, color=pal["zone"], zorder=1))
     for c in level.colliders:
-        colour = "#D9A397" if c.kind is ColliderKind.SEAM else "#CFC3A8"
+        colour = pal["seam"] if c.kind is ColliderKind.SEAM else pal["solid"]
         ax.add_patch(Rectangle((c.rect.left, c.rect.top), c.rect.width, c.rect.height, color=colour, zorder=2))
     ax.add_patch(
         Rectangle((level.seam.left - 4, level.seam.top - 3), level.seam.width + 8, level.seam.height + 6,
-                  fill=False, edgecolor=RED, linewidth=1.6, zorder=3)
+                  fill=False, edgecolor=pal["red"], linewidth=1.6, zorder=3)
     )
     if len(df):
         cx = (df["pos_x"] + PLAYER_WIDTH / 2).to_numpy()
         cy = (df["pos_y"] + PLAYER_HEIGHT / 2).to_numpy()
         keep = (cx >= 0) & (cx <= WORLD_WIDTH) & (cy >= 0) & (cy <= WORLD_HEIGHT)
         if keep.any():
-            heat, _, _ = np.histogram2d(cx[keep], cy[keep], bins=(80, 60), range=((0, WORLD_WIDTH), (0, WORLD_HEIGHT)))
-            heat = np.log1p(heat.T)
+            heat, _, _ = np.histogram2d(cx[keep], cy[keep], bins=(160, 120), range=((0, WORLD_WIDTH), (0, WORLD_HEIGHT)))
+            heat = _blur(np.log1p(heat.T))
             if heat.max() > 0:
-                ax.imshow(heat / heat.max(), extent=(0, WORLD_WIDTH, WORLD_HEIGHT, 0), cmap=_HEAT,
-                          interpolation="bilinear", zorder=4)
+                g = matplotlib.colors.to_rgb(pal["green"])
+                cmap = LinearSegmentedColormap.from_list("iq_heat", [(*g, 0.0), (*g, 0.95 if theme == "dark" else 0.85)])
+                ax.imshow((heat / heat.max()) ** 0.6, extent=(0, WORLD_WIDTH, WORLD_HEIGHT, 0), cmap=cmap,
+                          interpolation="bicubic", zorder=4)
     for issue in issues:
         if issue.symptom_of is not None:
             continue
         ox, oy = issue.origin
         px, py = ox + PLAYER_WIDTH / 2, oy + PLAYER_HEIGHT / 2
-        colour = TIER_COLOURS[issue.tier]
+        colour = pal[issue.tier]
         size = 260 + 50 * min(issue.count, 30)
-        ax.scatter([px], [py], s=size, color=colour, alpha=0.25, zorder=5, linewidths=0)
-        ax.scatter([px], [py], s=130, color=colour, edgecolors="white", linewidths=1.8, zorder=6)
+        ax.scatter([px], [py], s=size, color=colour, alpha=0.28, zorder=5, linewidths=0)
+        ax.scatter([px], [py], s=130, color=colour, edgecolors=pal["card"], linewidths=1.8, zorder=6)
         label = f"{issue.tier} · {issue.type} ×{issue.count}"
         dx = -12 if (px > WORLD_WIDTH * 0.7 or WORLD_WIDTH * 0.2 < px < WORLD_WIDTH * 0.45) else 12
         ax.annotate(label, (px, py), xytext=(dx, 20), textcoords="offset points",
-                    ha="right" if dx < 0 else "left", fontsize=10, fontweight="bold", color=INK, zorder=7,
-                    bbox=dict(boxstyle="round,pad=0.35", fc=CARD, ec=colour, lw=1.2))
+                    ha="right" if dx < 0 else "left", fontsize=10, fontweight="bold", color=pal["ink"], zorder=7,
+                    bbox=dict(boxstyle="round,pad=0.35", fc=pal["card"], ec=colour, lw=1.2))
     ax.set_xlim(-10, WORLD_WIDTH + 10)
     ax.set_ylim(WORLD_HEIGHT + 10, -10)
     ax.set_aspect("equal")
-    ax.tick_params(colors=MUTED, labelsize=8)
+    ax.tick_params(colors=pal["muted"], labelsize=8)
     for spine in ax.spines.values():
-        spine.set_color(BORDER)
+        spine.set_color(pal["border"])
     fig.tight_layout(pad=0.6)
     buf = io.BytesIO()
     fig.savefig(buf, format="png", facecolor=fig.get_facecolor())
@@ -350,27 +367,16 @@ def render_map(df: pd.DataFrame, issues: Sequence[Issue], level: Level) -> bytes
 
 
 # ------------------------------------------------------------ snapshots
+SNAP_W: Final[int] = 1600
+SNAP_H: Final[int] = 1200
 _GAME_BG = (24, 26, 32)
 _SOLID = (110, 115, 125)
 _SEAM = (150, 70, 70)
 
 
-def render_snapshot(
-    df: pd.DataFrame, event: BugEvent, level: Level, trail_frames: int = 240, zoom: bool = True
-) -> np.ndarray:
-    """Game-style 'screenshot' of the bug moment, rebuilt from telemetry (same geometry + colours as the game)."""
-    if not pygame.font.get_init():
-        pygame.font.init()
-    surf = pygame.Surface((WORLD_WIDTH, WORLD_HEIGHT))
-    surf.fill(_GAME_BG)
-    pygame.draw.rect(surf, (90, 30, 30), level.fall_gap)
-    pygame.draw.rect(surf, (90, 80, 20), level.pit)
-    for c in level.colliders:
-        pygame.draw.rect(surf, _SEAM if c.kind is ColliderKind.SEAM else _SOLID, c.rect)
-    pygame.draw.rect(surf, (255, 60, 60), level.seam.inflate(6, 0), 1)
-
+def _trail(df: pd.DataFrame, frame_id: int, trail_frames: int) -> tuple[np.ndarray, np.ndarray]:
     frames = df["frame_id"].to_numpy()
-    row = min(int(np.searchsorted(frames, event.frame_id)), len(frames) - 1)
+    row = min(int(np.searchsorted(frames, frame_id)), len(frames) - 1)
     start = max(0, row - trail_frames)
     xs = df["pos_x"].to_numpy()[start : row + 1]
     ys = df["pos_y"].to_numpy()[start : row + 1]
@@ -379,75 +385,115 @@ def render_snapshot(
     # Cut the trail at a respawn: a jump that the velocity does not explain (the bug frame itself is kept).
     for k in range(len(xs) - 2, 0, -1):
         if math.hypot(xs[k] - xs[k - 1] - vxs[k], ys[k] - ys[k - 1] - vys[k]) > 25:
-            xs, ys = xs[k:], ys[k:]
-            break
+            return xs[k:], ys[k:]
+    return xs, ys
 
-    def clamp(px: float, py: float) -> tuple[int, int, bool]:
-        inside = 0 <= px <= WORLD_WIDTH and 0 <= py <= WORLD_HEIGHT
-        return int(min(max(px, 6), WORLD_WIDTH - 6)), int(min(max(py, 6), WORLD_HEIGHT - 6)), inside
 
-    for k, (px, py) in enumerate(zip(xs[:-1], ys[:-1])):
-        cx, cy, inside = clamp(px + PLAYER_WIDTH / 2, py + PLAYER_HEIGHT / 2)
-        if inside:
-            shade = int(70 + 185 * (k + 1) / max(len(xs), 1))
-            pygame.draw.circle(surf, (shade // 3, shade, 255), (cx, cy), 2)
+def render_snapshot(
+    df: pd.DataFrame, event: BugEvent, level: Level, trail_frames: int = 240, zoom: bool = True
+) -> np.ndarray:
+    """Game-style 'screenshot' of the bug moment at 1600x1200, rebuilt from telemetry.
 
-    font = pygame.font.Font(None, 22)
-    small = pygame.font.Font(None, 19)
-    ox, oy = event.origin_x, event.origin_y
-    pygame.draw.rect(surf, (80, 200, 255), pygame.Rect(round(ox), round(oy), PLAYER_WIDTH, PLAYER_HEIGHT), 2)
+    The level is drawn with the game's own geometry and colours directly at output resolution
+    (no upscaling), optionally zoomed onto the error point.
+    """
+    from pygame import gfxdraw
 
-    bx, by, inside = clamp(event.x + PLAYER_WIDTH / 2, event.y + PLAYER_HEIGHT / 2)
-    if inside:
-        pygame.draw.rect(surf, (255, 70, 70), pygame.Rect(round(event.x), round(event.y), PLAYER_WIDTH, PLAYER_HEIGHT))
-        pygame.draw.line(surf, (255, 200, 200), (round(ox + 16), round(oy + 16)), (bx, by), 2)
-    else:
-        # Off-map: arrow from the last on-map position toward where the player really went.
-        sx, sy = ox + PLAYER_WIDTH / 2, oy + PLAYER_HEIGHT / 2
-        vx, vy = event.x + PLAYER_WIDTH / 2 - sx, event.y + PLAYER_HEIGHT / 2 - sy
-        norm = math.hypot(vx, vy) or 1.0
-        ux, uy = vx / norm, vy / norm
-        length = 70.0
-        for _ in range(20):  # shorten until the arrow tip stays inside the picture
-            tx, ty = sx + ux * length, sy + uy * length
-            if 4 <= tx <= WORLD_WIDTH - 4 and 4 <= ty <= WORLD_HEIGHT - 4:
-                break
-            length *= 0.8
-        base = (tx - ux * 16, ty - uy * 16)
-        left = (base[0] - uy * 9, base[1] + ux * 9)
-        right = (base[0] + uy * 9, base[1] - ux * 9)
-        pygame.draw.line(surf, (255, 120, 120), (round(sx), round(sy)), (round(base[0]), round(base[1])), 3)
-        pygame.draw.polygon(surf, (255, 70, 70), [(tx, ty), left, right])
-        bx, by = int(tx), int(ty)
+    if not pygame.font.get_init():
+        pygame.font.init()
+    xs, ys = _trail(df, event.frame_id, trail_frames)
+    half_w, half_h = PLAYER_WIDTH / 2, PLAYER_HEIGHT / 2
+    sx, sy = event.origin_x + half_w, event.origin_y + half_h  # last on-map position (centre)
+    ex, ey = event.x + half_w, event.y + half_h  # bug position (centre)
+    inside = 0 <= ex <= WORLD_WIDTH and 0 <= ey <= WORLD_HEIGHT
+    norm = math.hypot(ex - sx, ey - sy) or 1.0
+    ux, uy = (ex - sx) / norm, (ey - sy) / norm
 
+    # View in world coordinates, 4:3.
     if zoom:
-        # Crop around the action (last on-map position, recent path, bug) and scale it up, keeping 4:3.
-        focus_x = [ox + 16, float(bx)] + [float(px) + 16 for px in xs[-60:] if 0 <= px <= WORLD_WIDTH]
-        focus_y = [oy + 16, float(by)] + [float(py) + 16 for py in ys[-60:] if 0 <= py <= WORLD_HEIGHT]
-        left_x, right_x = min(focus_x) - 110, max(focus_x) + 110
-        top_y, bottom_y = min(focus_y) - 110, max(focus_y) + 110
-        w = max(right_x - left_x, (bottom_y - top_y) * 4 / 3, 360.0)
-        w = min(w, float(WORLD_WIDTH))
-        h = w * 3 / 4
-        cx, cy = (left_x + right_x) / 2, (top_y + bottom_y) / 2
-        x0 = int(min(max(cx - w / 2, 0), WORLD_WIDTH - w))
-        y0 = int(min(max(cy - h / 2, 0), WORLD_HEIGHT - h))
-        crop = surf.subsurface(pygame.Rect(x0, y0, int(w), int(h))).copy()
-        surf = pygame.transform.smoothscale(crop, (WORLD_WIDTH, WORLD_HEIGHT))
+        fx = [sx, min(max(ex, 0.0), WORLD_WIDTH)] + [float(x) + half_w for x in xs[-60:] if 0 <= x <= WORLD_WIDTH]
+        fy = [sy, min(max(ey, 0.0), WORLD_HEIGHT)] + [float(y) + half_h for y in ys[-60:] if 0 <= y <= WORLD_HEIGHT]
+        if not inside:
+            fx.append(sx + ux * 70)
+            fy.append(sy + uy * 70)
+        lx, rx, ty, by = min(fx) - 110, max(fx) + 110, min(fy) - 110, max(fy) + 110
+        vw = min(max(rx - lx, (by - ty) * 4 / 3, 360.0), float(WORLD_WIDTH))
+        vh = vw * 3 / 4
+        vx = min(max((lx + rx) / 2 - vw / 2, 0.0), WORLD_WIDTH - vw)
+        vy = min(max((ty + by) / 2 - vh / 2, 0.0), WORLD_HEIGHT - vh)
+    else:
+        vx, vy, vw, vh = 0.0, 0.0, float(WORLD_WIDTH), float(WORLD_HEIGHT)
+    scale = SNAP_W / vw
 
-    header = f"{event.type}  |  frame {event.frame_id}  |  game time {event.game_time}"
-    panel = pygame.Surface((WORLD_WIDTH, 30), pygame.SRCALPHA)
-    panel.fill((0, 0, 0, 150))
+    def pt(x: float, y: float) -> tuple[int, int]:
+        return round((x - vx) * scale), round((y - vy) * scale)
+
+    def rect(x: float, y: float, w: float, h: float) -> pygame.Rect:
+        left, top = pt(x, y)
+        return pygame.Rect(left, top, max(1, round(w * scale)), max(1, round(h * scale)))
+
+    surf = pygame.Surface((SNAP_W, SNAP_H))
+    surf.fill(_GAME_BG)
+    for zone, colour in ((level.fall_gap, (90, 30, 30)), (level.pit, (90, 80, 20))):
+        pygame.draw.rect(surf, colour, rect(zone.x, zone.y, zone.w, zone.h))
+    for c in level.colliders:
+        pygame.draw.rect(surf, _SEAM if c.kind is ColliderKind.SEAM else _SOLID, rect(c.rect.x, c.rect.y, c.rect.w, c.rect.h))
+    seam = level.seam.inflate(6, 0)
+    pygame.draw.rect(surf, (255, 60, 60), rect(seam.x, seam.y, seam.w, seam.h), max(2, round(scale)))
+
+    # Path before the bug.
+    dot = max(3, round(1.6 + scale))
+    n = len(xs)
+    for k, (px, py) in enumerate(zip(xs[:-1], ys[:-1])):
+        cx, cy = px + half_w, py + half_h
+        if 0 <= cx <= WORLD_WIDTH and 0 <= cy <= WORLD_HEIGHT:
+            shade = int(80 + 175 * (k + 1) / max(n, 1))
+            colour = (shade // 3, shade, 255)
+            qx, qy = pt(cx, cy)
+            gfxdraw.filled_circle(surf, qx, qy, dot, colour)
+            gfxdraw.aacircle(surf, qx, qy, dot, colour)
+
+    # Last on-map position + bug.
+    line_w = max(3, round(scale * 1.2))
+    pygame.draw.rect(surf, (80, 200, 255), rect(event.origin_x, event.origin_y, PLAYER_WIDTH, PLAYER_HEIGHT), line_w)
+    if inside:
+        pygame.draw.line(surf, (255, 200, 200), pt(sx, sy), pt(ex, ey), line_w)
+        pygame.draw.rect(surf, (255, 70, 70), rect(event.x, event.y, PLAYER_WIDTH, PLAYER_HEIGHT))
+    else:
+        length = 70.0
+        tx, ty = sx + ux * length, sy + uy * length
+        for _ in range(25):  # keep the arrow tip inside the view
+            tx, ty = sx + ux * length, sy + uy * length
+            if vx + 4 <= tx <= vx + vw - 4 and vy + 4 <= ty <= vy + vh - 4:
+                break
+            length *= 0.85
+        head, wing = 16.0, 9.0
+        bx, by = tx - ux * head, ty - uy * head
+        pygame.draw.line(surf, (255, 120, 120), pt(sx, sy), pt(bx, by), line_w + 1)
+        tri = [pt(tx, ty), pt(bx - uy * wing, by + ux * wing), pt(bx + uy * wing, by - ux * wing)]
+        gfxdraw.filled_polygon(surf, tri, (255, 70, 70))
+        gfxdraw.aapolygon(surf, tri, (255, 70, 70))
+
+    # Text, rendered at output resolution so it stays crisp.
+    font = pygame.font.Font(None, 44)
+    small = pygame.font.Font(None, 34)
+    panel = pygame.Surface((SNAP_W, 60), pygame.SRCALPHA)
+    panel.fill((0, 0, 0, 165))
     surf.blit(panel, (0, 0))
-    surf.blit(font.render(header, True, (240, 240, 240)), (12, 7))
-    legend = small.render("blue box = last position on map  ·  red = bug  ·  dots = path before the bug", True, (205, 205, 205))
-    surf.blit(legend, (WORLD_WIDTH - legend.get_width() - 12, 40))
+    header = f"{event.type}   |   frame {event.frame_id:,}   |   game time {event.game_time}"
+    surf.blit(font.render(header, True, (242, 242, 242)), (22, 16))
+    legend = small.render("blue box = last position on map  ·  red = bug  ·  dots = path before the bug", True,
+                          (215, 215, 215))
+    lbg = pygame.Surface((legend.get_width() + 20, legend.get_height() + 12), pygame.SRCALPHA)
+    lbg.fill((0, 0, 0, 120))
+    surf.blit(lbg, (SNAP_W - legend.get_width() - 32, 72))
+    surf.blit(legend, (SNAP_W - legend.get_width() - 22, 78))
     if not inside:
-        note = font.render(f"player left the map -> x {event.x:,.0f}, y {event.y:,.0f}", True, (255, 215, 215))
-        bg = pygame.Surface((note.get_width() + 16, note.get_height() + 10), pygame.SRCALPHA)
-        bg.fill((120, 30, 30, 200))
-        surf.blit(bg, (12, WORLD_HEIGHT - note.get_height() - 22))
-        surf.blit(note, (20, WORLD_HEIGHT - note.get_height() - 17))
+        note = font.render(f"player left the map  ->  x {event.x:,.0f}, y {event.y:,.0f}", True, (255, 222, 222))
+        bg = pygame.Surface((note.get_width() + 28, note.get_height() + 18), pygame.SRCALPHA)
+        bg.fill((125, 32, 32, 215))
+        surf.blit(bg, (22, SNAP_H - note.get_height() - 40))
+        surf.blit(note, (36, SNAP_H - note.get_height() - 31))
     return pygame.surfarray.array3d(surf).swapaxes(0, 1).copy()
 
 
