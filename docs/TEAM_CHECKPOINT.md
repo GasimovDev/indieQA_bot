@@ -166,7 +166,7 @@ python -c "import pandas as pd; a, b = (pd.read_csv(f'data/logs/{n}.csv').drop(c
 
 ### T7 — Demo dry run (before 20:00)
 - [ ] Fresh `git pull`, run T3 + T4 + T5 in the order you'll present
-- [ ] Pick a seed where a Wall_Clip happens early in rendered mode for the live demo
+- [x] Demo seed picked: **11** (`python main.py --seed 11`, see §9)
 - [ ] Screenshot game window + dashboard for the deck (Person 3)
 
 ---
@@ -178,3 +178,36 @@ python -c "import pandas as pd; a, b = (pd.read_csv(f'data/logs/{n}.csv').drop(c
 3. **Everyone:** re-run T4 + T5 → all 3 bug types visible on the dashboard.
 4. **Person 3:** screenshots + numbers from §5 and §1 into the deck; slides "3 Failure Modes" and "Feasibility" (zero training data, $0.04/h, deterministic).
 5. Demo dry run (T7).
+
+---
+
+## 9. Integration tools (Person 1, added 2026-10-09 ~15:30)
+
+### `--verify` — one-command integration test
+```powershell
+python main.py --headless --frames 36000 --verify
+```
+Runs the simulation, then Person 2's detector + reporter, then compares the detector against the **engine's ground truth** episode by episode (exit code 1 on mismatch):
+- *real* = episodes where the glitch really happened (Wall Clip: engine seam ejection · Infinite Fall: > 120 frames without collision · Softlock: > 300 frames in the pit)
+- *found* = those episodes where the detector reported that type · *missed* = real but not reported · *false alarms* = reported but didn't happen
+
+Result with the detector **currently on GitHub** (old version, seed 42):
+```
+  bug type        real  found  missed  false alarms   result
+  Wall Clip         22     22       0             0   PASS
+  Infinite Fall     48      0      48             0   FAIL
+  Softlock          16      0      16             0   FAIL
+[verify] FAIL - see rows above
+```
+→ After Person 2 pushes v3, **this is the integration test (step 2 in §8)**: all three rows must say PASS.
+
+### `--scan-seeds` — demo seed
+```powershell
+python main.py --scan-seeds 100 --frames 3600
+```
+Best of 100 seeds (1-minute runs): **seed 11** — Wall_Clip at **1.4 s**, Infinite_Fall at **3.4 s**, Softlock by **12.4 s** (verified identical in the rendered 60 FPS run).
+
+**Live demo command:**
+```powershell
+python main.py --seed 11
+```

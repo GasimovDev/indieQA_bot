@@ -333,6 +333,12 @@ glitch events    : {'Wall_Clip': 22}
 
 All four uploaded Person-2 versions of Person 1 files (`core/engine.py`, `core/agent.py`, `core/telemetry.py`, `main.py`) are now replaced on this branch. Entry points kept: `python main.py`, `python main.py --headless`, output `data/logs/telemetry.csv`.
 
+## 5.4 Post-Phase-5 additions (`main.py`)
+- **`--analyze`** also writes reports via Person 2's `BugReporter` (replaces old `bug_*` files) → dashboard shows bugs (team blocker B1).
+- **`--verify`**: episode-level comparison of detector output vs engine ground truth (real / found / missed / false alarms per type, exit code 1 on mismatch). See TEAM_CHECKPOINT §9.
+- **`--scan-seeds N`**: ranks seeds by how fast all 3 glitches appear. Demo seed **11**: Wall_Clip 1.4 s, Infinite_Fall 3.4 s, Softlock 12.4 s.
+- HUD now shows ground-truth counts of all 3 glitch types.
+
 ## 5. Remaining Phases — Plan
 
 ### Phase 2 — `core/engine.py` ✅ (see §5.0)
