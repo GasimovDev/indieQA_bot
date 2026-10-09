@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IndieQA Pitch</title>
+<!--
+  Design notes (huashu-design junior pass, swiss-system direction)
+  - Narrative: problem -> pipeline -> honest AI -> proof -> website -> demo -> value -> limits -> feasibility -> team -> ask.
+  - Viewing distance: 10 m projector + judges skimming a PDF. Min body size 30px, headlines 88-140px.
+  - One accent only: the engine's own bug red (HUD red, rgb 255,60,60, deepened for print). Everything else ink on paper.
+  - Real assets: level_map.png (docs/), game_seed11_all3.png (captured from `main.py --seed 11`, frame 744).
+  - Honest placeholders: dashboard screenshots (Person 4), [detector results] (Person 2), team names.
+  - Controls: <- / -> or click to navigate, N toggles speaker notes. Print / PDF = one slide per page.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F4F3EF; --ink:#0F0F0E; --muted:#6A6964; --rule:#D3D1C8; --soft:#E9E7E0;
+  --red:#D7261E; --red-soft:#F6DEDB;
+  --sans:"Archivo","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --m:112px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#1b1b1a;color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+body{overflow:hidden;height:100vh}
+.stage{position:fixed;left:50%;top:50%;width:1920px;height:1080px;transform-origin:center center}
+.slide{position:absolute;inset:0;background:var(--paper);padding:var(--m);display:none;flex-direction:column;overflow:hidden}
+.slide.active{display:flex}
+h1,h2,h3{font-weight:800;letter-spacing:-0.035em;line-height:.95;text-wrap:balance}
+h2{font-size:92px;max-width:1500px}
+p,li{text-wrap:pretty}
+.mono{font-family:var(--mono)}
+.red{color:var(--red)}
+.muted{color:var(--muted)}
+
+/* top rail: slide no. + section, Swiss-style */
+.rail{display:grid;grid-template-columns:120px 1fr auto;align-items:baseline;border-top:3px solid var(--ink);padding-top:18px;margin-bottom:64px;font-family:var(--mono);font-size:22px;letter-spacing:.02em}
+.rail b{font-weight:700}
+.rail .sec{text-transform:uppercase;color:var(--muted)}
+.rail .tag{color:var(--muted)}
+.foot{margin-top:auto;display:flex;justify-content:space-between;font-family:var(--mono);font-size:20px;color:var(--muted);padding-top:24px;border-top:1px solid var(--rule)}
+
+.grid{display:grid;grid-template-columns:repeat(12,1fr);column-gap:40px}
+.lead{font-size:36px;line-height:1.3;font-weight:500;max-width:1300px;margin-top:32px}
+ul.plain{list-style:none}
+ul.plain li{font-size:32px;line-height:1.3;padding:20px 0;border-top:1px solid var(--rule)}
+ul.plain li:last-child{border-bottom:1px solid var(--rule)}
+.kicker{font-family:var(--mono);font-size:20px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:14px}
+.big{font-size:200px;font-weight:800;letter-spacing:-0.05em;line-height:.85}
+.placeholder{border:2px dashed var(--muted);background:repeating-linear-gradient(135deg,transparent 0 18px,rgba(0,0,0,.035) 18px 36px);display:flex;align-items:center;justify-content:center;text-align:center;font-family:var(--mono);font-size:22px;color:var(--muted);padding:24px}
+.fill{background:#FFF8C4;padding:0 8px;font-family:var(--mono);font-size:.8em;color:var(--ink)}
+figure img{display:block;width:100%;height:auto;border:1px solid var(--ink)}
+figcaption{font-family:var(--mono);font-size:18px;color:var(--muted);margin-top:12px}
+.roadmap{display:inline-block;font-family:var(--mono);font-size:18px;font-weight:700;letter-spacing:.1em;border:2px solid var(--ink);padding:4px 10px;margin-left:12px;vertical-align:middle}
+
+/* notes */
+.notes{display:none;position:absolute;left:0;right:0;bottom:0;background:var(--ink);color:#EEE;font-size:24px;line-height:1.4;padding:28px var(--m);font-family:var(--sans)}
+.notes::before{content:"SPEAKER NOTES  ";font-family:var(--mono);font-size:18px;color:#999;letter-spacing:.1em}
+body.show-notes .notes{display:block}
+.counter{position:fixed;right:16px;bottom:12px;font-family:var(--mono);font-size:13px;color:#888}
+
+/* 01 title */
+.s-title{background:var(--ink);color:var(--paper)}
+.s-title .rail{border-color:var(--paper)}
+.s-title .rail .sec,.s-title .rail .tag{color:#A9A79F}
+.s-title h1{font-size:300px;letter-spacing:-0.06em;margin-top:40px}
+.s-title h1 span{color:var(--red)}
+.s-title .one{font-size:46px;line-height:1.2;font-weight:500;max-width:1350px;margin-top:56px;color:#E7E5DE}
+.s-title .foot{border-color:#3A3A38;color:#A9A79F}
+
+/* 03 pipeline */
+.pipe{display:grid;grid-template-columns:repeat(5,1fr);border-top:3px solid var(--ink);margin-top:72px}
+.pipe .st{padding:28px 28px 0 0;border-right:1px solid var(--rule);margin-right:28px}
+.pipe .st:last-child{border-right:0;margin-right:0}
+.pipe .n{font-family:var(--mono);font-size:22px;color:var(--red);font-weight:700}
+.pipe h3{font-size:44px;margin:18px 0 18px;letter-spacing:-0.03em}
+.pipe p{font-size:25px;line-height:1.35;color:#2b2b29}
+.pipe .arrow{font-family:var(--mono);color:var(--muted);font-size:20px;margin-top:22px}
+
+/* 04 agent */
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:56px}
+.mode{border-top:3px solid var(--ink);padding-top:24px}
+.mode h3{font-family:var(--mono);font-size:44px;font-weight:700;letter-spacing:-0.02em;margin-bottom:18px}
+.mode p{font-size:30px;line-height:1.35}
+.traits{display:grid;grid-template-columns:repeat(5,1fr);margin-top:auto;border-top:1px solid var(--rule)}
+.traits div{padding:22px 20px 0 0;font-size:28px;font-weight:700}
+.traits small{display:block;font-weight:400;font-size:20px;color:var(--muted);margin-top:6px;font-family:var(--mono)}
+.notml{font-family:var(--mono);font-size:24px;background:var(--ink);color:var(--paper);display:inline-block;padding:8px 14px;margin-top:28px}
+
+/* 05 proof */
+table.t{width:100%;border-collapse:collapse;font-size:24px}
+table.t th{font-family:var(--mono);font-size:17px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);text-align:left;font-weight:500;padding:0 16px 12px 0;border-bottom:2px solid var(--ink)}
+table.t td{padding:16px 16px 16px 0;border-bottom:1px solid var(--rule);vertical-align:top;line-height:1.3}
+table.t td.num{font-family:var(--mono);font-weight:700;font-size:34px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);border-top:3px solid var(--ink);margin-top:auto}
+.stats div{padding:20px 24px 0 0}
+.stats b{display:block;font-size:72px;font-weight:800;letter-spacing:-0.04em;line-height:1}
+.stats span{font-family:var(--mono);font-size:18px;color:var(--muted)}
+
+/* 07 demo */
+.cmd{font-family:var(--mono);font-size:24px;background:var(--ink);color:var(--paper);padding:14px 18px;margin:10px 0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.step{border-top:1px solid var(--rule);padding:22px 0}
+.step p{font-size:26px;line-height:1.3}
+.times{display:flex;gap:40px;margin-top:10px}
+.times div{font-family:var(--mono);font-size:22px}
+.times b{display:block;font-size:56px;font-family:var(--sans);font-weight:800;letter-spacing:-0.03em;color:var(--red)}
+
+/* 09 failure modes */
+.fm{display:grid;grid-template-columns:110px 1fr;border-top:1px solid var(--rule);padding:26px 0}
+.fm .n{font-size:84px;font-weight:800;color:var(--red);line-height:.9;letter-spacing:-0.04em}
+.fm h3{font-size:42px;letter-spacing:-0.025em;line-height:1.05}
+.fm p{font-size:25px;color:#3a3a37;margin-top:10px;line-height:1.3}
+
+/* 10 cost */
+.cost{display:grid;grid-template-columns:1fr 1fr;border-top:3px solid var(--ink)}
+.cost div{padding-top:20px}
+.cost b{display:block;font-size:180px;font-weight:800;letter-spacing:-0.06em;line-height:.9}
+
+/* 11 team */
+.team{display:grid;grid-template-columns:repeat(4,1fr);gap:40px;margin-top:80px}
+.team > div{border-top:3px solid var(--ink);padding-top:24px}
+.team .n{font-family:var(--mono);color:var(--red);font-size:22px;font-weight:700}
+.team h3{font-size:46px;margin:16px 0 14px;letter-spacing:-0.03em}
+.team p{font-size:26px;line-height:1.35;color:#2b2b29}
+
+@media print{
+  @page{size:1920px 1080px;margin:0}
+  html,body{background:var(--paper);overflow:visible;height:auto}
+  .stage{position:static;transform:none!important;width:1920px;height:auto}
+  .slide{position:relative;display:flex!important;width:1920px;height:1080px;page-break-after:always;break-after:page}
+  .notes,.counter{display:none!important}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+
+<!-- 01 TITLE -->
+<section class="slide s-title">
+  <div class="rail"><b>01</b><span class="sec">Neurobridge Game Summit 2026 · Baku</span><span class="tag">Hackathon pitch</span></div>
+  <h1>Indie<span>QA</span></h1>
+  <p class="one">An autonomous QA bot for indie studios. It plays your level ~240× faster than real time, hunts physics and collision bugs, and hands you every bug with where it happened and the exact buttons to reproduce it.</p>
+  <div class="foot"><span>Team of 4</span><span>github.com/GasimovDev/indieQA_bot</span></div>
+  <aside class="notes">We're IndieQA. Small studios can't afford QA teams, so physics bugs ship. Our bot plays your level on its own, far faster than a human, finds collision bugs and tells you exactly how to reproduce each one.</aside>
+</section>
+
+<!-- 02 PROBLEM -->
+<section class="slide">
+  <div class="rail"><b>02</b><span class="sec">Problem</span><span class="tag">User value</span></div>
+  <div class="grid" style="flex:1">
+    <div style="grid-column:1/8">
+      <h2>Collision bugs ship. Players find them on launch day.</h2>
+      <ul class="plain" style="margin-top:64px">
+        <li>Indie studios can't afford a QA team.</li>
+        <li>Walking through walls, falling out of the map, getting stuck: easy to miss by hand.</li>
+        <li>They surface as negative Steam reviews and refund requests.</li>
+        <li>Testers often can't say which inputs caused the bug, so reproducing it is slow.</li>
+      </ul>
+    </div>
+    <div style="grid-column:9/13;align-self:end">
+      <div class="kicker">Human QA tester</div>
+      <div class="big">$25<span style="font-size:80px;letter-spacing:0;margin-left:12px">/h</span></div>
+      <p class="muted" style="font-size:24px;margin-top:20px;font-family:var(--mono)">and still misses physics edge cases</p>
+    </div>
+  </div>
+  <aside class="notes">A human QA tester costs about $25 an hour. Physics bugs like clipping or falling out of the map are easy to miss by hand, and they show up on launch day as negative Steam reviews and refunds. Even when found, nobody knows the exact inputs.</aside>
+</section>
+
+<!-- 03 PIPELINE -->
+<section class="slide">
+  <div class="rail"><b>03</b><span class="sec">Solution · How it works</span><span class="tag">One command, runs locally</span></div>
+  <h2>From autonomous play to a bug report you can replay.</h2>
+  <div class="pipe">
+    <div class="st"><div class="n">01</div><h3>Agent plays</h3><p>An autonomous agent plays the level. No human at the controls.</p><div class="arrow">buttons →</div></div>
+    <div class="st"><div class="n">02</div><h3>Engine simulates</h3><p>Fixed 60 FPS physics, headless (no window), far faster than real time.</p><div class="arrow">frame state →</div></div>
+    <div class="st"><div class="n">03</div><h3>Telemetry</h3><p>Every frame: position, velocity, buttons, grounded, collision.</p><div class="arrow">CSV →</div></div>
+    <div class="st"><div class="n">04</div><h3>Bug detector</h3><p>Classifies physics anomalies. One report per bug: type, severity, location, last 30 inputs.</p><div class="arrow">reports →</div></div>
+    <div class="st"><div class="n">05</div><h3>Dashboard</h3><p>Local website: coverage heatmap, red bug markers, filterable log, export.</p><div class="arrow">localhost</div></div>
+  </div>
+  <div class="foot"><span>Python · Pygame · Streamlit</span><span>No cloud · no API keys · no GPU</span></div>
+  <aside class="notes">Five steps. The agent plays, the engine simulates physics at a fixed 60 FPS without a window, telemetry records every frame, the detector turns anomalies into bug reports with the last 30 inputs, and the dashboard shows it all in the browser.</aside>
+</section>
+
+<!-- 04 AGENT -->
+<section class="slide">
+  <div class="rail"><b>04</b><span class="sec">Where is the AI?</span><span class="tag">Said honestly</span></div>
+  <h2>An autonomous, rule-based agent built to break geometry.</h2>
+  <div class="notml">State machine · not machine learning · not an LLM</div>
+  <div class="modes">
+    <div class="mode"><div class="kicker">Mode 1</div><h3>Boundary_Seeker</h3><p>Senses the level with raycasts (wall ahead?) and ground probes (ledge ahead?). Walks to walls, edges and corners and hugs them, because that's where collision bugs live.</p></div>
+    <div class="mode"><div class="kicker">Mode 2</div><h3 class="red">Input_Spammer</h3><p>When touching a wall, fires rapid non-linear button combos (diagonal + jump, direction toggles) to force the physics into broken states.</p></div>
+  </div>
+  <div class="traits">
+    <div>Zero training data<small>works day one</small></div>
+    <div>Fully offline<small>runs on a laptop</small></div>
+    <div>Deterministic<small>same seed = same run</small></div>
+    <div>Explainable<small>every decision is a rule</small></div>
+    <div>Cheap<small>~$0.04/h compute</small></div>
+  </div>
+  <aside class="notes">Judges will ask where the AI is. It's an autonomous rule-based agent, a two-mode state machine, not ML and not an LLM. One mode seeks boundaries, the other spams inputs at walls. That means no training data, offline, and every bug is 100% reproducible.</aside>
+</section>
+
+<!-- 05 PROOF -->
+<section class="slide">
+  <div class="rail"><b>05</b><span class="sec">Proof · Planted-bug test level</span><span class="tag">800 × 600 px · seed 42</span></div>
+  <div class="grid" style="flex:1">
+    <div style="grid-column:1/8">
+      <h2 style="font-size:76px">We planted 3 bugs. The bot found them on its own.</h2>
+      <table class="t" style="margin-top:40px">
+        <tr><th>Planted bug</th><th>Detection signature</th><th>Hits in 10 min</th></tr>
+        <tr><td><b>Wall Clip</b><br><span class="muted">2-px seam in the right wall</span></td><td>&gt; 25 px in one frame while colliding</td><td class="num red">22</td></tr>
+        <tr><td><b>Infinite Fall</b><br><span class="muted">hole with no bottom, no reset</span></td><td>&gt; 120 frames falling, touching nothing</td><td class="num red">48</td></tr>
+        <tr><td><b>Softlock Pit</b><br><span class="muted">150 px deep, jump is 100 px</span></td><td>buttons held &gt; 300 frames, moved &lt; 5 px</td><td class="num red">16</td></tr>
+        <tr><td><b>Out of Bounds</b></td><td>position outside the map</td><td class="num muted">—</td></tr>
+      </table>
+    </div>
+    <figure style="grid-column:8/13;align-self:start;margin-top:8px">
+      <img src="img/level_map.png" alt="IndieQA test level map with the three planted bugs">
+      <figcaption>Test level · red seam = Wall Clip · red gap = Infinite Fall · yellow = Softlock Pit</figcaption>
+    </figure>
+  </div>
+  <div class="stats">
+    <div><b>36,000</b><span>frames = 10 min of play</span></div>
+    <div><b>~2.5 s</b><span>headless → ~240× real time</span></div>
+    <div><b>65</b><span>episodes, unaided</span></div>
+    <div><b>7,200/7,200</b><span>identical frames, same seed</span></div>
+  </div>
+  <aside class="notes">We built a test level with three bugs planted on purpose. In a 10-minute run, simulated in about 2.5 seconds, the bot produced 22 wall clips, 48 infinite falls and 16 softlocks across 65 attempts. Same seed twice gave identical data on all 7,200 frames.</aside>
+</section>
+
+<!-- 06 WEBSITE -->
+<section class="slide">
+  <div class="rail"><b>06</b><span class="sec">The website</span><span class="tag">Streamlit · localhost in your browser</span></div>
+  <h2>Every bug, where it happened, and how to replay it.</h2>
+  <div class="grid" style="flex:1;margin-top:48px">
+    <div class="placeholder" style="grid-column:1/6">[SCREENSHOT: dashboard overview]<br>header · time tested · frames · bugs · $25/h vs $0.04/h</div>
+    <div class="placeholder" style="grid-column:6/10">[SCREENSHOT: map with red bug markers]</div>
+    <div class="placeholder" style="grid-column:10/13">[SCREENSHOT: bug detail]<br>last 30 inputs</div>
+  </div>
+  <div class="grid" style="margin-top:32px;font-size:24px;line-height:1.35">
+    <p style="grid-column:1/4"><b>Header</b><br><span class="muted">game time tested, frames analysed, bugs found, cost banner</span></p>
+    <p style="grid-column:4/7"><b>Map</b><br><span class="muted">heatmap of where the bot explored, red marker at every bug</span></p>
+    <p style="grid-column:7/10"><b>Bug log</b><br><span class="muted">filter by severity / type, reproduction sequence per bug</span></p>
+    <p style="grid-column:10/13"><b>Export</b><br><span class="muted">bug reports as Markdown</span></p>
+  </div>
+  <aside class="notes">This is the dashboard, a local website. The top shows how much gameplay we tested and the cost banner. The map shows where the bot went and red markers at every bug. Click a bug to see the exact 30 inputs that cause it, and export the report.</aside>
+</section>
+
+<!-- 07 DEMO -->
+<section class="slide">
+  <div class="rail"><b>07</b><span class="sec">Live demo</span><span class="tag">Backup: screenshots in this deck</span></div>
+  <div class="grid" style="flex:1">
+    <div style="grid-column:1/7">
+      <h2 style="font-size:84px">All three bugs in under 15 seconds.</h2>
+      <div class="step" style="margin-top:40px">
+        <p><b>1 · Watch it play</b> (real time, 60 FPS)</p>
+        <div class="cmd">python main.py --seed 11</div>
+        <div class="times"><div><b>1.4 s</b>Wall Clip</div><div><b>3.4 s</b>Infinite Fall</div><div><b>12.4 s</b>Softlock</div></div>
+      </div>
+      <div class="step"><p><b>2 · 10 minutes of testing in ~3 seconds</b></p><div class="cmd">python main.py --headless --frames 36000 --analyze</div></div>
+      <div class="step"><p><b>3 · Open the website</b>: map, bug list, one bug's steps</p><div class="cmd">streamlit run dashboard/app.py</div></div>
+    </div>
+    <figure style="grid-column:7/13;align-self:center">
+      <img src="img/game_seed11_all3.png" alt="Game window at frame 744, seed 11, all three glitches found">
+      <figcaption>Game window, seed 11, frame 744 (12.4 s): player stuck in the Softlock Pit, HUD shows all 3 glitches found</figcaption>
+    </figure>
+  </div>
+  <aside class="notes">Live: seed 11 in real time. Watch it clip through the wall at 1.4 seconds, fall forever at 3.4, and get stuck in the pit at 12.4. Then headless: ten minutes of play in about three seconds. Then the dashboard. If the demo fails, this screenshot is the backup.</aside>
+</section>
+
+<!-- 08 USER VALUE -->
+<section class="slide">
+  <div class="rail"><b>08</b><span class="sec">User value</span><span class="tag">Steam launch risk</span></div>
+  <h2>Find the bug before your players review it.</h2>
+  <div class="grid" style="margin-top:72px">
+    <div style="grid-column:1/5;border-top:3px solid var(--ink);padding-top:24px">
+      <div class="kicker">Before launch</div>
+      <p style="font-size:34px;line-height:1.3;font-weight:600">Collision bugs are caught on your machine, not in Steam reviews and refund requests.</p>
+    </div>
+    <div style="grid-column:5/9;border-top:3px solid var(--ink);padding-top:24px">
+      <div class="kicker">Every build</div>
+      <p style="font-size:34px;line-height:1.3;font-weight:600">10 minutes of play in ~2.5 s means you can re-test the level after every change.</p>
+    </div>
+    <div style="grid-column:9/13;border-top:3px solid var(--red);padding-top:24px">
+      <div class="kicker red">Fix fast</div>
+      <p style="font-size:34px;line-height:1.3;font-weight:600">Each bug ships with location + last 30 inputs. Same seed, same bug, 100% reproducible.</p>
+    </div>
+  </div>
+  <div class="foot"><span>Every bug report: type · severity · location · last 30 inputs</span><span>Seed 42 · 10 min of play · 86 glitch events</span></div>
+  <aside class="notes">The value is launch risk. You find collision bugs before players do, you can re-run the bot on every build because it's so fast, and every bug comes with location and inputs, so a developer reproduces it immediately instead of guessing.</aside>
+</section>
+
+<!-- 09 QUALITY / FAILURE MODES -->
+<section class="slide">
+  <div class="rail"><b>09</b><span class="sec">Quality testing</span><span class="tag">Where IndieQA fails</span></div>
+  <div class="grid" style="flex:1">
+    <div style="grid-column:1/8">
+      <h2 style="font-size:80px;margin-bottom:36px">Three failure modes we state up front.</h2>
+      <div class="fm"><div class="n">1</div><div><h3>Cannot evaluate narrative or quest-sequencing logic.</h3><p>It tests physics, not story.</p></div></div>
+      <div class="fm"><div class="n">2</div><div><h3>High false-positive rate on non-standard physics with custom inertia curves.</h3><p>Thresholds like 25 px/frame assume standard platformer physics.</p></div></div>
+      <div class="fm" style="border-bottom:1px solid var(--rule)"><div class="n">3</div><div><h3>Struggles with procedurally generated maps with no static geometry reference.</h3></div></div>
+    </div>
+    <div style="grid-column:9/13;background:var(--soft);padding:40px;align-self:stretch;display:flex;flex-direction:column">
+      <div class="kicker">How we validate ourselves</div>
+      <p style="font-size:28px;line-height:1.35;font-weight:600">A planted-bug level + an automatic check of detector output vs the engine's ground truth.</p>
+      <p class="mono muted" style="font-size:19px;margin-top:14px">found / missed / false alarms, per bug type</p>
+      <table class="t" style="margin-top:auto;font-size:24px">
+        <tr><th>Bug</th><th>Detected</th></tr>
+        <tr><td>Wall Clip</td><td class="num red">22/22</td></tr>
+        <tr><td>Infinite Fall</td><td><span class="fill">[detector results]</span></td></tr>
+        <tr><td>Softlock</td><td><span class="fill">[detector results]</span></td></tr>
+      </table>
+    </div>
+  </div>
+  <aside class="notes">We know where we fail. One, no narrative or quest logic. Two, custom inertia physics will cause false positives because our thresholds assume a standard platformer. Three, procedural maps with no static geometry. We validate ourselves against the engine's ground truth: wall clip is 22 of 22.</aside>
+</section>
+
+<!-- 10 FEASIBILITY -->
+<section class="slide">
+  <div class="rail"><b>10</b><span class="sec">Feasibility</span><span class="tag">Unit economics · integration</span></div>
+  <div class="cost">
+    <div><div class="kicker">Human QA</div><b>$25<span style="font-size:70px;letter-spacing:0;margin-left:14px">/h</span></b></div>
+    <div><div class="kicker red">IndieQA · local compute</div><b class="red">$0.04<span style="font-size:70px;letter-spacing:0;margin-left:14px">/h</span></b></div>
+  </div>
+  <p class="muted mono" style="font-size:20px;margin-top:14px">Team estimate. And one IndieQA hour covers far more than one hour of play: headless runs ~240× real time.</p>
+  <div class="grid" style="margin-top:auto">
+    <div style="grid-column:1/5;border-top:3px solid var(--ink);padding-top:22px">
+      <div class="kicker">Needs nothing</div>
+      <p style="font-size:28px;line-height:1.35">No training data · no cloud · no API keys · no GPU. ~1 µs telemetry overhead per frame.</p>
+    </div>
+    <div style="grid-column:5/9;border-top:3px solid var(--ink);padding-top:22px">
+      <div class="kicker">Built today</div>
+      <p style="font-size:28px;line-height:1.35">Python + Pygame engine, agent, telemetry, detector, reporter, Streamlit dashboard. One command.</p>
+    </div>
+    <div style="grid-column:9/13;border-top:3px dashed var(--ink);padding-top:22px">
+      <div class="kicker">Unity &amp; Godot <span class="roadmap">ROADMAP</span></div>
+      <p style="font-size:28px;line-height:1.35">Plug-ins in C# and GDScript stream the same telemetry format over WebSocket. Same detector, same dashboard. <i>Not built yet.</i></p>
+    </div>
+  </div>
+  <aside class="notes">Unit economics: $25 an hour for a human, about four cents an hour of local compute for us, and that hour covers far more gameplay. No training data, no cloud. Built today in Python. Unity and Godot plug-ins are roadmap: stream the same telemetry over WebSocket.</aside>
+</section>
+
+<!-- 11 TEAM -->
+<section class="slide">
+  <div class="rail"><b>11</b><span class="sec">Team</span><span class="tag">4 people</span></div>
+  <h2>Four people, one pipeline.</h2>
+  <div class="team">
+    <div><div class="n">P1</div><h3>Engine &amp; agent</h3><p>Physics engine, planted glitches, telemetry, autonomous agent.</p><p class="fill" style="margin-top:18px;display:inline-block">[Name]</p></div>
+    <div><div class="n">P2</div><h3>Detection</h3><p>Bug detector and per-bug reporter.</p><p class="fill" style="margin-top:18px;display:inline-block">[Name]</p></div>
+    <div><div class="n">P3</div><h3>Pitch</h3><p>Story, deck and demo.</p><p class="fill" style="margin-top:18px;display:inline-block">[Name]</p></div>
+    <div><div class="n">P4</div><h3>Website</h3><p>Streamlit dashboard: map, bug log, export.</p><p class="fill" style="margin-top:18px;display:inline-block">[Name]</p></div>
+  </div>
+  <div class="foot"><span>agent → engine → telemetry → detector → reporter → dashboard</span><span>Python · Pygame · Streamlit</span></div>
+  <aside class="notes">Four people, each owning one stage of the pipeline: engine and agent, detection, the website, and the pitch.</aside>
+</section>
+
+<!-- 12 ASK -->
+<section class="slide s-title">
+  <div class="rail"><b>12</b><span class="sec">Next steps</span><span class="tag">IndieQA</span></div>
+  <h2 style="font-size:120px;max-width:1600px;margin-top:20px">Let the bot find the bug <span class="red">before</span> your players do.</h2>
+  <div class="grid" style="margin-top:auto;color:#E7E5DE">
+    <div style="grid-column:1/5;border-top:1px solid #4A4A47;padding-top:22px"><div class="kicker" style="color:#A9A79F">Next · 1</div><p style="font-size:28px;line-height:1.35">Unity (C#) and Godot (GDScript) telemetry plug-ins over WebSocket.</p></div>
+    <div style="grid-column:5/9;border-top:1px solid #4A4A47;padding-top:22px"><div class="kicker" style="color:#A9A79F">Next · 2</div><p style="font-size:28px;line-height:1.35">Per-game detector thresholds, to cut false positives on custom physics.</p></div>
+    <div style="grid-column:9/13;border-top:1px solid #4A4A47;padding-top:22px"><div class="kicker" style="color:#A9A79F">Next · 3</div><p style="font-size:28px;line-height:1.35">Run it on real indie levels.</p></div>
+  </div>
+  <div class="foot"><span>github.com/GasimovDev/indieQA_bot</span><span>Thank you</span></div>
+  <aside class="notes">Next: Unity and Godot plug-ins, per-game thresholds to address our second failure mode, and testing on real indie levels. IndieQA lets the bot find the bug before your players do. Thank you.</aside>
+</section>
+
+</div>
+<div class="counter" id="counter"></div>
+<script>
+(function(){
+  var slides=[].slice.call(document.querySelectorAll('.slide'));
+  var stage=document.getElementById('stage'), counter=document.getElementById('counter');
+  var i=0;
+  try{ i=Math.min(slides.length-1, Math.max(0, parseInt(localStorage.getItem('indieqa-slide')||'0',10)||0)); }catch(e){}
+  function fit(){
+    var s=Math.min(window.innerWidth/1920, window.innerHeight/1080);
+    stage.style.transform='translate(-50%,-50%) scale('+s+')';
+  }
+  function show(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach(function(s,k){ s.classList.toggle('active',k===i); });
+    counter.textContent=(i+1)+' / '+slides.length+'  ·  ← →  ·  N notes';
+    try{ localStorage.setItem('indieqa-slide', String(i)); }catch(e){}
+  }
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' ') show(i+1);
+    else if(e.key==='ArrowLeft'||e.key==='PageUp') show(i-1);
+    else if(e.key==='Home') show(0);
+    else if(e.key==='End') show(slides.length-1);
+    else if(e.key==='n'||e.key==='N') document.body.classList.toggle('show-notes');
+  });
+  document.addEventListener('click',function(e){ show(e.clientX > window.innerWidth/3 ? i+1 : i-1); });
+  window.addEventListener('resize',fit);
+  var h=parseInt(location.hash.slice(1),10); if(h>0) i=h-1;
+  fit(); show(i);
+})();
+</script>
+</body>
+</html>
