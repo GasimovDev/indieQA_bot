@@ -18,7 +18,6 @@ if str(ROOT) not in sys.path:
 from analysis.reporter import BugReporter
 from dashboard.live import LiveRun, PRIORITIES, BUG_COLORS, prioritize, read_telemetry
 from dashboard import visuals
-from dashboard.advisor import AdvisorAPIError, LocalFixAdvisor, configured_advisor
 
 # Streamlit can rerun this file without reloading an imported module. Reload the
 # small rendering module so theme-aware function signatures stay in sync during
@@ -70,23 +69,6 @@ def stop_demo() -> None:
         log_file.close()
     st.session_state.demo_process = None
 
-
-def advisor_backend():
-    """Keep one configured backend for this browser session."""
-    if 'advisor_backend' not in st.session_state:
-        st.session_state.advisor_backend = configured_advisor()
-    return st.session_state.advisor_backend
-
-
-def advisor_answer(question: str, bug: dict) -> str:
-    """Use the API when configured and fall back locally if it is unavailable."""
-    backend = advisor_backend()
-    try:
-        return backend.answer(question, bug)
-    except AdvisorAPIError as exc:
-        st.session_state.advisor_api_warning = str(exc)
-        local = LocalFixAdvisor().answer(question, bug)
-        return f'{local}\n\n(API unavailable; using the local advisor for this answer.)'
 
 st.set_page_config(page_title='IndieQA · Live QA', page_icon='🛡️', layout='wide')
 light_mode = bool(st.session_state.get('light_mode', False))
@@ -207,34 +189,6 @@ def load_recorded_reports(data: pd.DataFrame) -> list[dict]:
     return reports
 
 
-def render_fix_advisor(bug: dict) -> None:
-    """Render the API-ready local advisor for the selected failure point."""
-    event_key = str(bug['event_key'])
-    chats = st.session_state.setdefault('advisor_chats', {})
-    messages = chats.setdefault(event_key, [{
-        'role': 'assistant',
-        'content': advisor_answer('recommend a fix', bug),
-    }])
-    with st.container(border=True):
-        st.markdown('### 💬 Fix Advisor')
-        st.caption(f'{advisor_backend().name} · API key is optional; local fallback stays available.')
-        if st.session_state.get('advisor_api_warning'):
-            st.caption(f"API status: {st.session_state.advisor_api_warning}")
-        for message in messages[-6:]:
-            with st.chat_message(message['role']):
-                st.write(message['content'])
-        with st.form(f'advisor_form_{event_key}'):
-            question = st.text_input('Ask about this failure', placeholder='Why is this P0? How do I reproduce it?')
-            submitted = st.form_submit_button('Ask advisor', type='primary', use_container_width=True)
-        question = question.strip()
-        submission_key = f'advisor_last_question_{event_key}'
-        if submitted and question and st.session_state.get(submission_key) != question:
-            messages.append({'role': 'user', 'content': question})
-            messages.append({'role': 'assistant', 'content': advisor_answer(question, bug)})
-            st.session_state[submission_key] = question
-            st.caption('Answer added. The next live refresh keeps this conversation in place.')
-
-
 def _dashboard_fragment(function):
     """Enable Streamlit's timer only after the user explicitly turns live mode on."""
     return st.fragment(run_every=1)(function) if live else function
@@ -311,9 +265,8 @@ def dashboard() -> None:
                 'Infinite Fall': 'Inspect floor coverage and add a safe recovery boundary below the level.',
                 'Softlock': 'Check pit escape height against the player jump limit; provide an exit or recovery action.',
                 'Out of Bounds': 'Trace the last in-arena position and verify world-boundary handling.'}.get(selected['type'], 'Inspect the frame context and reproduction inputs.'))
-            render_fix_advisor(selected)
         else:
-            st.info('Select a failure point above to inspect its evidence and fix advice.' if bugs else 'The bot is exploring. Detected events will appear here.')
+            st.info('Select a failure point above to inspect its evidence.' if bugs else 'The bot is exploring. Detected events will appear here.')
     if selected:
         st.subheader('Visual evidence')
         window = data[(data.frame_id >= selected['frame_id'] - 180) & (data.frame_id <= selected['frame_id'])]

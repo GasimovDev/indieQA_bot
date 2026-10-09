@@ -8,7 +8,6 @@ import pandas as pd
 from streamlit.testing.v1 import AppTest
 from analysis.bug_detector import BugDetector
 from dashboard.live import LiveRun, read_telemetry, prioritize
-from dashboard.advisor import LocalFixAdvisor
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,15 +19,6 @@ def falling(count: int, start: float = 1000.) -> pd.DataFrame:
 
 
 class LiveDataTests(unittest.TestCase):
-    def test_local_advisor_is_api_ready_and_contextual(self) -> None:
-        bug = {'type': 'Wall Clip', 'severity': 'CRITICAL', 'priority': 'P0',
-               'frame_id': 85, 'coordinates_xyz': [800., 389., 0.],
-               'reproduction_sequence': ['right', 'right+jump']}
-        advisor = LocalFixAdvisor()
-        self.assertIn('right-wall seam', advisor.answer('recommend a fix', bug))
-        self.assertIn('right+jump', advisor.answer('How do I reproduce it?', bug))
-        self.assertIn('P0', advisor.answer('why is this urgent?', bug))
-
     def test_incremental_matches_batch_and_does_not_duplicate(self) -> None:
         data = falling(350)
         run = LiveRun()
