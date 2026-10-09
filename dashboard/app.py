@@ -1,117 +1,111 @@
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import os
+"""Local developer dashboard for the latest IndieQA run."""
+from __future__ import annotations
 import json
+from pathlib import Path
+import sys
+from typing import Any
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import streamlit as st
 
-st.set_page_config(page_title="IndieQA Dashboard", layout="wide")
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from analysis.reporter import BugReporter
 
-# Section A (Live Header & Metrics)
-st.title("IndieQA - Autonomous QA Bug & Collision Hunter")
+st.set_page_config(page_title="IndieQA | QA Command Center", page_icon="🔎", layout="wide")
+st.title("IndieQA · QA Command Center")
+st.caption("Autonomous collision testing · Local telemetry · Reproducible bug evidence")
+st.info("Cost assumptions: Human QA $25/hour · IndieQA local compute $0.04/hour. Estimates, not measured savings.")
+if st.button("Refresh latest run"):
+    st.rerun()
 
-st.markdown("""
-<div style='background-color: #1e1e1e; padding: 15px; border-radius: 5px; margin-bottom: 20px;'>
-    <h3 style='margin: 0; color: #4CAF50;'>Economics Comparison</h3>
-    <p style='margin: 0;'><strong>Human QA:</strong> $25/hr | <strong>IndieQA:</strong> $0.04/hr</p>
-</div>
-""", unsafe_allow_html=True)
 
-col1, col2, col3 = st.columns(3)
-
-# Mocked running metrics
-col1.metric("Running Time", "02:15:30") 
-
-# Load data
-LOG_DIR = "data/logs"
-REPORT_DIR = "data/reports"
-
-@st.cache_data(ttl=5) # Refresh slightly when possible
-def load_telemetry():
-    log_path = os.path.join(LOG_DIR, "telemetry.csv")
-    if os.path.exists(log_path):
-        return pd.read_csv(log_path)
-    return pd.DataFrame({'pos_x': [], 'pos_y': []})
-
-@st.cache_data(ttl=5)
-def load_bugs():
-    bugs = []
-    if os.path.exists(REPORT_DIR):
-        for file in os.listdir(REPORT_DIR):
-            if file.endswith(".json"):
-                with open(os.path.join(REPORT_DIR, file), "r", encoding='utf-8') as f:
-                    bugs.append(json.load(f))
-    return pd.DataFrame(bugs)
-
-telemetry_df = load_telemetry()
-bugs_df = load_bugs()
-
-total_frames = len(telemetry_df) if not telemetry_df.empty else 0
-col2.metric("Total Frames Analyzed", f"{total_frames:,}")
-
-num_bugs = len(bugs_df) if not bugs_df.empty else 0
-col3.metric("Bugs Detected", str(num_bugs))
-
-# Section B (Spatial Coverage Heatmap)
-st.header("Spatial Coverage & Bug Heatmap")
-
-fig, ax = plt.subplots(figsize=(10, 6))
-
-if not telemetry_df.empty and 'pos_x' in telemetry_df.columns and 'pos_y' in telemetry_df.columns:
+def load_telemetry() -> pd.DataFrame:
+    path = ROOT / "data/logs/telemetry.csv"
+    if not path.exists():
+        return pd.DataFrame()
     try:
-        sns.kdeplot(
-            x=telemetry_df['pos_x'], 
-            y=telemetry_df['pos_y'], 
-            cmap="Blues", 
-            fill=True, 
-            bw_adjust=0.5,
-            ax=ax
-        )
-    except Exception as e:
-        st.warning(f"Could not generate heatmap: {e}")
+        return pd.read_csv(path).dropna(subset=["pos_x", "pos_y", "frame_id", "timestamp"])
+    except (OSError, ValueError, pd.errors.ParserError) as exc:
+        st.warning(f"Telemetry is not ready: {exc}")
+        return pd.DataFrame()
 
-if not bugs_df.empty and 'coordinates_xyz' in bugs_df.columns:
-    # Scatter bugs
-    bug_x = [coord[0] for coord in bugs_df['coordinates_xyz'] if isinstance(coord, (list, tuple))]
-    bug_y = [coord[1] for coord in bugs_df['coordinates_xyz'] if isinstance(coord, (list, tuple))]
-    
-    if bug_x and bug_y:
-        ax.scatter(bug_x, bug_y, color='red', s=50, marker='X', label="Detected Bugs")
+
+def load_bugs() -> list[dict[str, Any]]:
+    bugs = []
+    for path in sorted((ROOT / "data/reports").glob("bug_*.json")):
+        try:
+            bug = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(bug, dict) or not {"bug_id", "type", "severity", "coordinates_xyz"} <= bug.keys():
+                raise ValueError("Invalid report schema")
+            bugs.append(bug)
+        except (OSError, ValueError) as exc:
+            st.warning(f"Skipped unreadable report {path.name}: {exc}")
+    return bugs
+
+
+telemetry = load_telemetry()
+all_bugs = load_bugs()
+# Reports from an earlier run must not be presented as current results.
+bugs = []
+if not telemetry.empty:
+    start, end = telemetry.timestamp.min(), telemetry.timestamp.max()
+    bugs = [b for b in all_bugs if start <= b.get("timestamp", -1) <= end]
+if len(bugs) != len(all_bugs):
+    st.warning("Older reports are hidden. Run analysis for the current telemetry to update results.")
+seconds = len(telemetry) / 60
+hours, remainder = divmod(int(seconds), 3600)
+minutes, secs = divmod(remainder, 60)
+metrics = st.columns(3)
+metrics[0].metric("Simulated Running Time", f"{hours:02}:{minutes:02}:{secs:02}")
+metrics[1].metric("Frames Recorded", f"{len(telemetry):,}")
+metrics[2].metric("Bugs Detected", len(bugs))
+
+st.subheader("Spatial Coverage & Bug Heatmap")
+view = st.radio("Map view", ["Arena (800 × 600)", "Full trajectory"], horizontal=True)
+fig, ax = plt.subplots(figsize=(12, 5))
+if not telemetry.empty:
+    points = telemetry[["pos_x", "pos_y"]].to_numpy(dtype=float)
+    points = points[np.isfinite(points).all(axis=1)]
+    extent = [[0, 800], [0, 600]] if view.startswith("Arena") else None
+    if len(points):
+        _, _, _, mesh = ax.hist2d(points[:, 0], points[:, 1], bins=(40, 30), range=extent, cmap="Blues", cmin=1)
+        fig.colorbar(mesh, ax=ax, label="Recorded frames per cell")
+    if view.startswith("Arena"):
+        inside = points[(points[:, 0] >= 0) & (points[:, 0] <= 800) & (points[:, 1] >= 0) & (points[:, 1] <= 600)]
+        counts, _, _ = np.histogram2d(inside[:, 0], inside[:, 1], bins=(40, 30), range=[[0, 800], [0, 600]])
+        st.caption(f"Visited grid cells: {np.count_nonzero(counts)}/1200. Includes solid geometry; this is spatial occupancy, not reachable-area coverage.")
+    coords = [b["coordinates_xyz"] for b in bugs if isinstance(b["coordinates_xyz"], (list, tuple)) and len(b["coordinates_xyz"]) >= 2]
+    if coords:
+        ax.scatter([p[0] for p in coords], [p[1] for p in coords], c="#ff3344", marker="X", s=65, label="Bug trigger", edgecolors="white", linewidths=.5)
         ax.legend()
-
-ax.set_title("Exploration Heatmap vs Bug Locations")
-ax.set_xlabel("X Coordinate")
-ax.set_ylabel("Y Coordinate")
-ax.invert_yaxis() # Typical for 2D game coordinates
-
-st.pyplot(fig)
-
-# Section C (Bug Log Table)
-st.header("Bug Log Table")
-
-if not bugs_df.empty:
-    severity_filter = st.selectbox("Filter by Severity", ["ALL", "CRITICAL", "HIGH", "MEDIUM", "LOW"])
-    
-    display_df = bugs_df
-    if severity_filter != "ALL":
-        display_df = bugs_df[bugs_df['severity'] == severity_filter]
-        
-    cols_to_display = ['bug_id', 'type', 'severity', 'coordinates_xyz', 'timestamp']
-    existing_cols = [c for c in cols_to_display if c in display_df.columns]
-    
-    st.dataframe(display_df[existing_cols], use_container_width=True)
-    
-    st.subheader("Export Reports")
-    export_col1, export_col2 = st.columns(2)
-    with export_col1:
-        if st.button("Export PDF Report"):
-            st.success("PDF Report generation initiated. (Requires PDF export plugin)")
-    with export_col2:
-        if st.button("Export Markdown Summary"):
-            summary = display_df[existing_cols].to_markdown()
-            os.makedirs(REPORT_DIR, exist_ok=True)
-            with open(os.path.join(REPORT_DIR, "summary.md"), "w", encoding='utf-8') as f:
-                f.write(summary)
-            st.success("Markdown summary saved to data/reports/summary.md")
+    if view.startswith("Arena"):
+        ax.set_xlim(0, 800)
+        ax.set_ylim(0, 600)
+        st.caption("Off-map events remain in the bug log; select Full trajectory to see their coordinates.")
 else:
-    st.info("No bugs detected yet. Run the simulation engine to generate telemetry.")
+    st.info("Run python main.py --headless --seed 11 --analyze to create telemetry and reports.")
+ax.set(xlabel="X (px)", ylabel="Y (px, downward)")
+ax.invert_yaxis()
+fig.tight_layout()
+st.pyplot(fig)
+plt.close(fig)
+
+st.subheader("Bug Log")
+if bugs:
+    severity = st.selectbox("Filter by Severity", ["ALL", "CRITICAL", "HIGH", "MEDIUM"])
+    filtered = [b for b in bugs if severity == "ALL" or b["severity"] == severity]
+    columns = ["bug_id", "type", "severity", "coordinates_xyz", "frame_id", "timestamp"]
+    st.dataframe(pd.DataFrame(filtered, columns=columns))
+    markdown = "# IndieQA Diagnostic Report\n\n" + "\n---\n".join(BugReporter.format_markdown(b) for b in filtered)
+    left, right = st.columns(2)
+    left.download_button("Download Markdown Report", markdown, "indieqa-report.md", "text/markdown")
+    right.download_button("Download JSON Reports", json.dumps(filtered, indent=2), "indieqa-reports.json", "application/json")
+    if filtered:
+        selected = st.selectbox("Inspect reproduction inputs", range(len(filtered)), format_func=lambda i: f"{filtered[i]['type']} · frame {filtered[i].get('frame_id')}")
+        st.json(filtered[selected])
+    st.caption("For PDF: open the downloaded Markdown in your document viewer and print to PDF.")
+else:
+    st.info("No reports for this run yet. Run python analysis/run_analysis.py after the simulation finishes.")

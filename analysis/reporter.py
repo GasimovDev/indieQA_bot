@@ -3,7 +3,7 @@ import os
 from typing import List, Dict, Any
 
 class BugReporter:
-    def __init__(self, output_dir: str = "data/reports"):
+    def __init__(self, output_dir: str = "data/reports") -> None:
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
@@ -18,12 +18,13 @@ class BugReporter:
             
         # Save Markdown
         md_path = os.path.join(self.output_dir, f"bug_{bug_id}.md")
-        md_content = self._format_markdown(bug)
+        md_content = self.format_markdown(bug)
         
         with open(md_path, 'w', encoding='utf-8') as f:
             f.write(md_content)
             
-    def _format_markdown(self, bug: Dict[str, Any]) -> str:
+    @staticmethod
+    def format_markdown(bug: Dict[str, Any]) -> str:
         bug_id = bug.get('bug_id', 'unknown')
         bug_type = bug.get('type', 'Unknown')
         severity = bug.get('severity', 'UNKNOWN')

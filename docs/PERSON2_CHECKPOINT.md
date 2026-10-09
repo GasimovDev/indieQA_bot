@@ -1,3 +1,61 @@
+# Current verified status ? 2026-10-09, Person 2 continuation
+
+This section supersedes the historical checkpoint below. The GitHub archive still
+contained v1 code despite the previous checkpoint claiming v3 completion.
+Person 1's main.py already supports --analyze, --verify and --scan-seeds.
+
+## Implemented and verified locally
+
+- Detector defaults to 800x600; every check runs independently; OOB and falling
+  report once per event; wall clips require current collision evidence and cooldown.
+- OOB follows the original spec bounds (no unexplained 500/1000px margins).
+- Infinite Fall: positive downward velocity, no ground/collision, >120 consecutive
+  frames. Long falls produce one report, not one report every 120 frames.
+- Respawns and frame gaps clear temporal evidence. Respawns are inferred from
+  displacement inconsistent with recorded velocity on non-collision frames.
+- Softlock: >300 active-input frames inside the configured static pit, with repeated
+  grounded landing positions <5px apart in a 301-frame window. This accommodates
+  jump spam and prevents periodic patrol false positives. The old endpoint-only
+  rule caused 7 false-positive episodes on seed 42. Default enclosure (440,440) to
+  (480,590), player 32x32, from the agreed map contract. Other maps must configure
+  softlock_zone/player_size. Detector does not read engine zone/glitch/episode labels.
+- Reproduction sequence contains up to 30 inputs preceding the trigger frame.
+- Added analysis/run_analysis.py; direct and module execution supported.
+- Dashboard: telemetry time/frame metrics, grid heatmap, arena/full-trajectory views,
+  severity filter, reproduction inspector, downloadable Markdown and JSON.
+  Old-run reports are hidden by timestamp. Refresh manually after a run finishes.
+- Removed fake PDF success action. Direct PDF download remains unimplemented;
+  Markdown can be printed to PDF externally. Markdown needs no tabulate dependency.
+- core/, main.py and shared requirements are unchanged.
+
+## Validation evidence
+
+| Seed | Frames | Wall Clip found/real | Infinite Fall found/real | Softlock found/real | False alarms |
+|---|---:|---:|---:|---:|---:|
+| 42 | 36000 | 22/22 | 48/48 | 16/16 | 0 |
+| 7 | 36000 | 18/18 | 36/36 | 22/22 | 0 |
+| 11 | 7200 | 7/7 | 12/12 | 2/2 | 0 |
+
+All three `main.py --verify` runs PASS. OOB is informational in the engine verifier
+(49, 36, 13 reports respectively). These are deterministic demo-level results,
+not general accuracy claims across game engines. Unit + Streamlit interaction
+suite: 10 tests PASS. Standalone analysis regenerated 135 reports for seed 42.
+Dashboard defaults currently show the seed-42 run: 36,000 frames, 10:00 simulated
+minutes, 135 reports (49 OOB, 48 Infinite Fall, 22 Wall Clip, 16 Softlock).
+
+## Delivery / next action
+
+The verified files have been applied to a fresh Git checkout of main, preserving
+Person 1's latest live-telemetry and level-map additions (base ba019b0). This commit
+contains only Person 2 implementation, regression tests and documentation.
+See PERSON2_RUNBOOK.md for commands and this machine's Python 3.14 pygame-ce note.
+After pulling this commit, run --verify on the team's normal Python/Pygame
+environment, then take demo screenshots for Person 3.
+
+---
+
+# Historical checkpoint (superseded by the verified status above)
+
 # CHECKPOINT — Person 2 (Module 2: Detection Engine, Reporter & Dashboard)
 
 > **Project:** IndieQA — Autonomous QA Bug & Collision Hunter
