@@ -1,0 +1,37 @@
+{
+    "bug_id": "9cb6ae82-00ab-4db0-8481-0b0cfda7611a",
+    "type": "Wall Clip",
+    "severity": "CRITICAL",
+    "coordinates_xyz": [
+        800.0,
+        389.0,
+        0.0
+    ],
+    "frame_id": 5084,
+    "timestamp": 1791553418.575409,
+    "reproduction_sequence": [
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right+jump"
+    ]
+}

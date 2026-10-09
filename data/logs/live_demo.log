@@ -1,0 +1,9 @@
+pygame-ce 2.5.8 (SDL 2.32.10, Python 3.14.7)
+IndieQA simulation: rendered @ 60 FPS, 7200 frames, seed 11
+  frame     85  episode   1  Wall_Clip
+  frame    206  episode   1  Infinite_Fall
+----------------------------------------------------------------
+frames simulated : 465 (7.8 s game time in 7.9 s)
+episodes         : 2  resets: {'fell (no collision > 300 frames)': 1}
+glitches (truth) : {'Wall_Clip': 1, 'Infinite_Fall': 1}
+telemetry        : C:\Users\multy\Documents\ChatGPT\my project\indieQA_bot\data\logs\telemetry.csv

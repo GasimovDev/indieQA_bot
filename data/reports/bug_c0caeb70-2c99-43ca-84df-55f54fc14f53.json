@@ -1,0 +1,38 @@
+{
+    "bug_id": "c0caeb70-2c99-43ca-84df-55f54fc14f53",
+    "type": "Out of Bounds",
+    "severity": "CRITICAL",
+    "coordinates_xyz": [
+        801.6,
+        380.25,
+        0.0
+    ],
+    "frame_id": 5085,
+    "timestamp": 1791553418.592076,
+    "reproduction_sequence": [
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right",
+        "right+jump",
+        "right+jump"
+    ]
+}
