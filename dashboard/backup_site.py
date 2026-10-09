@@ -63,6 +63,17 @@ def remember_theme() -> None:
         st.session_state.iq_theme = THEME_OPTIONS[choice]
 
 
+# Deep links, e.g. ?theme=dark&issue=0&occ=1 (applied once per browser session).
+if "iq_links_applied" not in st.session_state:
+    _qp = st.query_params
+    if _qp.get("theme") in ("light", "dark"):
+        st.session_state.iq_theme = _qp["theme"]
+    if str(_qp.get("issue", "")).isdigit():
+        st.session_state.iq_issue = int(_qp["issue"])
+    if str(_qp.get("occ", "")).isdigit():
+        st.session_state.iq_occ_pending = int(_qp["occ"])
+    st.session_state.iq_links_applied = True
+
 THEME: str = st.session_state.get("iq_theme", "light")
 P: dict[str, str] = palette(THEME)
 
@@ -395,6 +406,8 @@ def body() -> None:
     events: list[BugEvent] = sorted(issue.events, key=lambda e: e.frame_id)
     n = len(events)
     occ_key = f"iq_occ_{issue.key}"
+    if "iq_occ_pending" in st.session_state:
+        st.session_state[occ_key] = min(st.session_state.pop("iq_occ_pending"), n - 1)
     current = st.session_state.get(occ_key)
     if current is None or current >= n:
         st.session_state[occ_key] = 0
