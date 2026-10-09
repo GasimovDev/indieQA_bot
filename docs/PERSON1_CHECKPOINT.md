@@ -4,7 +4,7 @@
 > **Event:** Neurobridge Game Summit 2026 Hackathon, Baku
 > **Repo:** https://github.com/GasimovDev/indieQA_bot
 > **Last updated:** 2026-10-09 — end of **Phase 2**
-> **Status:** ✅ Phase 1 · ✅ Phase 2 (`core/engine.py`, all self-tests pass) · ✅ Phase 3 (`core/telemetry.py`) · ⏭️ Phase 4 (`core/agent.py`) — commits are local on `person1/core`; push pending repo access for `Qaqu2`
+> **Status:** ✅ Phase 1 · ✅ Phase 2 (`core/engine.py`, all self-tests pass) · ✅ Phase 3 (`core/telemetry.py`) · ✅ Phase 4 (`core/agent.py`) · ⏭️ Phase 5 (`main.py`) — pushed to branch `person1/core`
 
 ---
 
@@ -15,8 +15,8 @@
 | 1 | Environment scaffolding (`requirements.txt`, `core/__init__.py`, `data/logs/`) | ✅ Done |
 | 2 | Physics engine + 3 intentional glitches (`core/engine.py`) | ✅ Done (§5.0) |
 | 3 | Telemetry recorder (`core/telemetry.py`) | ✅ Done (§5.1) |
-| 4 | Autonomous agent (`core/agent.py`) | ⏭️ Next |
-| 5 | CLI test runner (`main.py`) | ⏳ Pending |
+| 4 | Autonomous agent (`core/agent.py`) | ✅ Done (§5.2) |
+| 5 | CLI test runner (`main.py`) | ⏭️ Next |
 
 Each phase is only started after the previous one is confirmed functional by Person 1.
 
@@ -278,6 +278,29 @@ The engine only simulates; it never judges. Bugs are classified by Person 2's `a
 - Infinite Fall not reported → expected, it's the OOB short-circuit bug fixed locally by Person 2 but not yet pushed.
 - **New finding for Person 2 (Softlock):** `_check_softlock` records the start position on the *first* non-`"none"` input and only resets on a `"none"` frame. An agent that presses something every frame (ours does, by design) fixes the start position at its spawn, far from the pit → Softlock can **never** fire. Suggested fix (Person 2's call): compare against the position 300 frames ago (sliding window), not against the first input frame.
 
+## 5.2 Phase 4 — What We Did (`core/agent.py`) ✅
+
+`QAAgent(level, seed=0)` → `decide(state: FrameState) -> InputState`, one call per frame. Exposes `mode` (`AgentMode.BOUNDARY_SEEKER` / `INPUT_SPAMMER`) for the HUD.
+
+**Black-box rule:** the agent only uses the player's kinematic state + the static collider list. It never reads `zone` / `glitch_event` (those are for the runner and tests).
+
+| Mode | Behaviour |
+|---|---|
+| **Boundary_Seeker** | Horizontal raycasts at head/mid/feet height find the nearest wall in its heading; downward ground probes (every 4 px, up to 120 px ahead) find ledges/gaps. Walks to the boundary, **hugs ledges** 6–20 frames, then drops off (50 %), jumps across (30 %) or turns back (20 %). Random 2 % hops find the platform. Airborne → keeps pushing toward the boundary (diagonal approach into walls/corners). |
+| **Input_Spammer** | Entered on collision frames where the agent is pressed into a wall (≤ 1.5 px). 45–120 frames of combos, each held 2–6 frames: diagonal-into-wall + jump 45 %, push 20 %, vertical hop 15 %, back off 12 %, reverse diagonal 8 %. **Never emits `none`.** If still pinned when the timer ends (e.g. trapped in the pit) it re-arms instead of idling. |
+
+Seeded `random.Random` → same seed ⇒ identical input sequence (reproducible `reproduction_sequence`). New episode (engine `reset`) ⇒ mode/heading re-initialised.
+
+**Self-test — `python -m core.agent`** (30,000 frames ≈ 8 min of game time, ~5 s wall time):
+```
+[PASS] deterministic             : seed 42 twice -> identical 30000 inputs
+[PASS] seed-sensitive            : seed 7 -> different run
+[PASS] both modes active         : {'Boundary_Seeker': '42%', 'Input_Spammer': '58%'}, 252 mode switches
+[PASS] combo inputs              : ['left+jump', 'right+jump']
+[PASS] glitches reached          : {'Wall_Clip': 17, 'Infinite_Fall': 17, 'Softlock_Pit': 12}
+```
+Trapped-in-pit check (seed 7): 1,962 pit frames, **0 × `none`**, x confined to 440–448 px.
+
 ## 5. Remaining Phases — Plan
 
 ### Phase 2 — `core/engine.py` ✅ (see §5.0)
@@ -288,7 +311,7 @@ The engine only simulates; it never judges. Bugs are classified by Person 2's `a
 - Exact header from §4; booleans written as `True`/`False`; simulated timestamps.
 - Clean shutdown flush (context manager) so no rows are lost on exit/Ctrl+C.
 
-### Phase 4 — `core/agent.py`
+### Phase 4 — `core/agent.py` ✅ (see §5.2)
 - `QAAgent` state machine: `decide(state: FrameState) -> InputState`.
 - **Boundary_Seeker:** probes/raycasts against level colliders to find nearest walls, ledges and corners; moves to and hugs them.
 - **Input_Spammer:** triggered on collision frames (wall/corner contact); rapid non-linear combos (diagonals + jump spam, direction toggles) to force clips. Returns to Boundary_Seeker after N frames or when contact ends.
