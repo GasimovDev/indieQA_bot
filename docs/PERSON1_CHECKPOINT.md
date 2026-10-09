@@ -4,7 +4,7 @@
 > **Event:** Neurobridge Game Summit 2026 Hackathon, Baku
 > **Repo:** https://github.com/GasimovDev/indieQA_bot
 > **Last updated:** 2026-10-09 — end of **Phase 1**
-> **Status:** ✅ Phase 1 complete & pushed · ⏸️ Phase 2 (`core/engine.py`) blocked on team decision (§8 item 6)
+> **Status:** ✅ Phase 1 complete (local commit; push pending repo access for `Qaqu2`) · ⏭️ Phase 2 (`core/engine.py`) — level layout proposed, awaiting approval
 
 ---
 
@@ -58,7 +58,7 @@ headless display OK (800, 600)   # via SDL_VIDEODRIVER=dummy
 ```
 Headless Pygame works → `main.py` will be able to run without a window (fast batch testing) as well as at 60 FPS rendered.
 
-### 2.3.1 ⚠️ Repo event during Phase 1 — teammate upload (commit `c349a0a`, author `LRigloo`)
+### 2.3.1 ⚠️ Repo event during Phase 1 — teammate upload (commit `c349a0a`, author `LRigloo` = Person 2)
 While Phase 1 was being pushed, commit `c349a0a "Add files via upload"` landed on `main` with **all three modules**, including Person 1's files: `core/engine.py`, `core/agent.py`, `core/telemetry.py`, `main.py` (plus `analysis/*`, `dashboard/*`, `requirements.txt`).
 
 - Merge handling: the only conflict was `core/__init__.py` (Person 1 file) → kept the documented version. `requirements.txt` was identical (no conflict). **The uploaded `core/*.py` and `main.py` were left untouched** pending a team decision.
@@ -243,7 +243,8 @@ With semi-implicit Euler and jump set as `vel_y = -v0`, the rise over frames `k 
 | 3 | Level layout coordinates (floor height, platforms, glitch locations) | Person 1 | To propose in Phase 2 |
 | 4 | Person 2's local `requirements.txt` not yet pushed — identical content, should merge cleanly | Person 2 | Info |
 | 5 | Add `data/logs/*.csv` to `.gitignore` | Team | Suggested |
-| 6 | **Who owns `core/` now?** Teammate `LRigloo` uploaded `core/*.py` + `main.py` (§2.3.1). Replace with the spec-approved implementation, or adopt & fix theirs? | Team | **BLOCKING Phase 2** |
+| 6 | Who owns `core/`? `LRigloo` (= Person 2) uploaded `core/*.py` + `main.py` (§2.3.1) | Team | ✅ **Decided 2026-10-09: REPLACE** — Person 1 rebuilds `core/` + `main.py` to the approved spec, keeping the entry points (`python main.py [--headless]`, same CSV path/columns) |
+| 10 | `Qaqu2` has no push access to `GasimovDev/indieQA_bot` (HTTP 403) | GasimovDev | Open — add as collaborator |
 | 7 | `BugDetector` world size 1920×1080 vs engine 800×600 | Person 2 | Open |
 | 8 | OOB check short-circuits Infinite Fall detection + per-frame OOB spam | Person 2 | Open |
 | 9 | Softlock false positives from always-on agent input | Person 2 | Open |
