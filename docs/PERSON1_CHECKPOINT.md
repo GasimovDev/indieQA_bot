@@ -4,7 +4,7 @@
 > **Event:** Neurobridge Game Summit 2026 Hackathon, Baku
 > **Repo:** https://github.com/GasimovDev/indieQA_bot
 > **Last updated:** 2026-10-09 — end of **Phase 2**
-> **Status:** ✅ Phase 1 · ✅ Phase 2 (`core/engine.py`, all self-tests pass) · ⏭️ Phase 3 (`core/telemetry.py`) — commits are local on `person1/core`; push pending repo access for `Qaqu2`
+> **Status:** ✅ Phase 1 · ✅ Phase 2 (`core/engine.py`, all self-tests pass) · 🔨 Phase 3 (`core/telemetry.py`) in progress — commits are local on `person1/core`; push pending repo access for `Qaqu2`
 
 ---
 
@@ -14,7 +14,7 @@
 |---|---|---|
 | 1 | Environment scaffolding (`requirements.txt`, `core/__init__.py`, `data/logs/`) | ✅ Done |
 | 2 | Physics engine + 3 intentional glitches (`core/engine.py`) | ✅ Done (§5.0) |
-| 3 | Telemetry recorder (`core/telemetry.py`) | ⏭️ Next |
+| 3 | Telemetry recorder (`core/telemetry.py`) | 🔨 In progress |
 | 4 | Autonomous agent (`core/agent.py`) | ⏳ Pending |
 | 5 | CLI test runner (`main.py`) | ⏳ Pending |
 
@@ -228,6 +228,30 @@ The engine no longer owns the agent or the telemetry logger (unlike the uploaded
 ```
 Rendered mode verified off-screen (window drawing, HUD, zone labels, 60 FPS clock).
 
+### Manual play mode — `python -m core.engine --play`
+Run from the repo root (PowerShell needs the `.\` prefix):
+```powershell
+cd C:\Users\Fidan-HP\Desktop\instruction\indieQA_bot
+.\venv\Scripts\python.exe -m core.engine          # automatic self-test
+.\venv\Scripts\python.exe -m core.engine --play   # keyboard play
+```
+Controls: ←/→ or A/D move · Space/↑/W jump · 1/2/3 respawn at S1/S2/S3 · Esc quit.
+
+**Manual test by Person 1 (2026-10-09):**
+| Check | Result |
+|---|---|
+| Infinite_Fall (S1 → walk into red gap) | ✅ falls forever |
+| Wall_Clip (S3 → run + jump into right wall) | ✅ passes through the wall |
+| Softlock_Pit (S2 → walk into yellow pit) | ⚠️ wording ambiguous ("did now fall") — to confirm whether the player falls in; the automated self-test confirms it does |
+
+### Where do detected bugs appear? (full pipeline)
+```
+engine (game)  →  telemetry.csv  →  bug_detector + reporter  →  Streamlit dashboard
+  Person 1         Person 1           Person 2                   Person 2
+  ✅ Phase 2       Phase 3            analysis/  → data/reports/  dashboard/app.py
+```
+The engine only simulates; it never judges. Bugs are classified by Person 2's `analysis/bug_detector.py` from the CSV, written as Markdown/JSON by `analysis/reporter.py` into `data/reports/`, and shown on the **local** website started with `streamlit run dashboard/app.py` (http://localhost:8501). The dashboard stays empty until telemetry (Phase 3) produces `data/logs/telemetry.csv`.
+
 > ⚠️ Until Phase 5, the uploaded `main.py` / `core/agent.py` / `core/telemetry.py` still exist on this branch and `python main.py` is expected to fail (it imports the old `Engine`). They are replaced in Phases 3–5; `main` is untouched until then.
 
 ## 5. Remaining Phases — Plan
@@ -296,3 +320,4 @@ With semi-implicit Euler and jump set as `vel_y = -v0`, the rise over frames `k 
 | 7 | `BugDetector` world size 1920×1080 vs engine 800×600 | Person 2 | Open |
 | 8 | OOB check short-circuits Infinite Fall detection + per-frame OOB spam | Person 2 | Fixed locally by Person 2 (debounce + all checks every frame) — **not yet pushed** |
 | 9 | Softlock false positives from always-on agent input | Person 2 | Open |
+| 11 | Manual pit test wording ambiguous — confirm player falls into the Softlock_Pit when played by hand | Person 1 | Open |
