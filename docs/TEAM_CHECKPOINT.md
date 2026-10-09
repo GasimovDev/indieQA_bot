@@ -80,9 +80,9 @@ Optional upgrade (post-blockers): run the detector incrementally from `main.py` 
 | Telemetry (`core/telemetry.py`) | Person 1 | ✅ | Self-test 6/6: exact columns, contiguous frames, simulated timestamps, 0.6 µs/frame |
 | Agent (`core/agent.py`) | Person 1 | ✅ | Self-test 5/5: deterministic, both modes, finds all 3 glitches unaided |
 | Runner (`main.py`) | Person 1 | ✅ | 36,000 frames (10 game-min) in 2.1 s; rendered mode real-time 60 FPS |
-| Bug detector (`analysis/bug_detector.py`) | Person 2 | ⚠️ old version only | Wall Clip 22/22 ✅ · Infinite Fall 0 ❌ · Softlock 0 ❌ · Out of Bounds spam (14,424) ❌ |
-| Reporter (`analysis/reporter.py`) | Person 2 | ⚠️ | Works when called, **but nothing calls it** |
-| Dashboard (`dashboard/app.py`) | Person 2 | ⚠️ | Loads, frame count correct; 0 bugs shown (no reports); Markdown export crashes; running time mocked |
+| Bug detector (`analysis/bug_detector.py`) | Person 2 | ✅ (`958925f`, 16:14) | `--verify` PASS on 4 seeds: 100 % found, 0 false alarms (§10) |
+| Reporter (`analysis/reporter.py`) | Person 2 | ✅ | Called by `main.py --analyze` and `analysis/run_analysis.py`; 135 reports for a 36k-frame run |
+| Dashboard (`dashboard/app.py`) | Person 2 → Person 4 | ✅ | Loads real run without errors: 00:10:00, 36,000 frames, 135 bugs, table + 2 downloads. Live mode / real map: Person 4 (see PERSON4 guide) |
 | Pitch deck | Person 3 | — | Not in repo (due 20:00, PDF/PPT ≤ 30 MB) |
 
 **Ground truth the telemetry already contains** (10 game-min run, seed 42), checked against the spec rules directly: **22 Wall Clips, 48 Infinite Falls, 13 Softlocks.** The data side is done; detection/reporting is the gap.
@@ -211,3 +211,22 @@ Best of 100 seeds (1-minute runs): **seed 11** — Wall_Clip at **1.4 s**, Infin
 ```powershell
 python main.py --seed 11
 ```
+
+---
+
+## 10. ✅ INTEGRATION RESULT (2026-10-09 ~16:30) — the full system works end to end
+
+After Person 2's push (`958925f`), `python main.py --headless --frames 36000 --verify`:
+
+| Seed | Wall Clip (real/found) | Infinite Fall | Softlock | False alarms | Result |
+|---|---|---|---|---|---|
+| 42 | 22 / 22 | 48 / 48 | 16 / 16 | 0 | **PASS** |
+| 7 | 18 / 18 | 36 / 36 | 22 / 22 | 0 | **PASS** |
+| 11 (demo) | 24 / 24 | 45 / 45 | 13 / 13 | 0 | **PASS** |
+| 123 | 17 / 17 | 34 / 34 | 23 / 23 | 0 | **PASS** |
+| **Total** | **81 / 81** | **163 / 163** | **74 / 74** | **0** | **318 / 318 = 100 %** |
+
+Out of Bounds is now reported once per event (36–49 per run instead of 14,424).
+Other checks: Person 2's 10 unit tests pass (`python -m unittest discover -s tests`); dashboard loads the real run with no exceptions. Blockers B2–B7 resolved (`tabulate` no longer needed — export no longer uses `to_markdown`).
+
+**Remaining before the pitch:** Person 4's live map (real level + live markers), Person 3's deck, demo dry run (T7).
